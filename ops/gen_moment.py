@@ -162,6 +162,8 @@ def run_post(args, llmcore, char_config, persona):
         r = api(base, "POST", "/api/posts", {
             "actor_id": aid, "content": content, "gen_task_id": f"gen_moment:{today}:{args.actor}"})
         print(f"[ok] 已发圈 post_id={r['id']}：{content}")
+        from homeland_ingest import homeland_ingest
+        homeland_ingest(char_config, "moment", "朋友圈", "发了新朋友圈动态", content)
         ok = True
         break
     if not ok:
@@ -215,6 +217,9 @@ def run_interact(args, llmcore, char_config, persona):
             "parent_id": master_c["id"], "gen_task_id": f"reply:{t['id']}"})
         api(base, "POST", f"/api/unread/{t['id']}/done")
         print(f"[ok] 已回评：{content}")
+        from homeland_ingest import homeland_ingest
+        homeland_ingest(char_config, "moment_reply", "朋友圈回评",
+                        f"主人评论我的动态「{target['content'][:40]}」说：{master_c['content'][:60]}，我回复", content)
     return 0
 
 
@@ -261,6 +266,9 @@ def run_cross(args, llmcore, char_config, persona):
         "actor_id": aid, "content": content, "parent_id": None,
         "gen_task_id": f"cross:{target['id']}"})
     print(f"[ok] 已互评：{content}")
+    from homeland_ingest import homeland_ingest
+    homeland_ingest(char_config, "moment_cross", "朋友圈互评",
+                    f"给{CHAR_NAME[other]}的动态「{target['content'][:40]}」留言", content)
     return 0
 
 

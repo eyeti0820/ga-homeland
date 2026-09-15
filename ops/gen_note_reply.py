@@ -200,6 +200,9 @@ def main():
             continue
         api(args.api, "POST", f"/api/notes/{t['note_id']}/replies",
             {"actor_id": me["id"], "content": reply})
+        from homeland_ingest import homeland_ingest  # 家园产出→记忆宫殿(方案A: 原文直存+场景标签)
+        homeland_ingest(char_config, "note", "便签回贴",
+                        f"在便签「{note['content'][:40]}」下回贴（主人说：{t['master_words'][:60]}）", reply)
         if t["unread_id"]:
             api(args.api, "POST", f"/api/unread/{t['unread_id']}/done")
         print("已回贴 ✓")

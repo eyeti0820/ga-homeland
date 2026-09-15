@@ -139,6 +139,9 @@ def main():
     out = api(args.api, "POST", "/api/diary/entries",
               {"actor_id": me["id"], "content": body, "mood": mood})
     print(f"已写页 ✓ entry#{out['id']}")
+    from homeland_ingest import homeland_ingest
+    homeland_ingest(char_config, "diary", "日记",
+                    f"写了新日记（心情：{mood}；翻了 {len(pend)} 封回信）", body)
     for r in pend:   # 翻过的回信 → 已阅
         api(args.api, "POST", f"/api/unread/{r['unread_id']}/done", {})
     print(f"回信已翻（unread done ×{len(pend)}）")

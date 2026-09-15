@@ -4,18 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>家园 · 交换日记</title>
-<link rel="stylesheet" href="style.css?v=3">
-<link rel="stylesheet" href="diary.css?v=2">
+<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="diary.css?v=4">
 </head>
 <body>
 <div class="wall-vignette" aria-hidden="true"></div>
 
-<header class="wall-head">
-  <div class="head-left">
-    <h1 class="wall-title diary-title">交换<span>日记</span></h1>
-    <p class="wall-sub">一人一本，深夜见字如面 · <a class="back-wall" href="/">← 便签墙</a> · <a class="back-wall" href="moments.html">📷 朋友圈</a> · <a class="back-wall" href="forum.html">💬 论坛</a></p>
+<header class="app-head">
+  <div class="app-brand">
+    <h1 class="app-title">交换<span>日记</span></h1>
+    <p class="app-sub">一人一本，深夜见字如面</p>
   </div>
-  <div class="head-right" id="diary-tabs"></div>
+  <div class="app-aside">
+    <nav class="app-nav">
+      <a href="index.html">便签墙</a>
+      <a href="moments.html">朋友圈</a>
+      <a class="on" href="diary.html">交换日记</a>
+      <a href="forum.html">论坛</a>
+    </nav>
+    <div class="diary-tabs" id="diary-tabs"></div>
+  </div>
 </header>
 
 <main class="diary-wrap">

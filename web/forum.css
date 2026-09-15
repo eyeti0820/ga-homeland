@@ -1,23 +1,25 @@
-/* forum.css — 临空市论坛（M3.1 改版）：六板撞色纸板 × 木纹空间阴影 × 板色浸染内页 */
+/* forum.css — 临空市论坛（M3.1 改版）：六板撞色纸板 × 空间阴影 × 板色浸染内页 */
 /* 主题色 --fa（板内 accents）+ 纸板色 --paper（板卡底，莫兰迪奶油、便签墙同源色板）；暗点改暗酒红 */
-.f-main { --fa: #c96f4a; --paper: #f3ecdf; }        /* 兜底：陶土橘/奶油墙 */
-.f-main[data-board="city"]     { --fa: #b57a1e;
-  --card1:#fdf3e7; --card2:#f9e9d8; --card-ink:#4a3a28; --card-soft:#8a7a64; }  /* 奶油杏(小梅·日记信纸) */
-.f-main[data-board="hunters"]  { --fa: #6d4fa8;
-  --card1:#faf8fd; --card2:#f0e9f8; --card-ink:#4a3f5c; --card-soft:#7d6f94; }  /* 雾紫(沈星回纸·职业猎人) */
-.f-main[data-board="fleet"]    { --fa: #d98635;
-  --card1:#fffdf6; --card2:#fbf6ea; --card-ink:#3f372c; --card-soft:#8f866f; }  /* 奶油米(夏以昼纸·执舰官) */
-.f-main[data-board="darkspot"] { --fa: #c05a5e;   /* 暗点交互色提亮一档，深底上可读 */
-  --card1:#8a383c; --card2:#6e2c30; --card-ink:#f5e6e0; --card-soft:#d9a8a4; }  /* 暗酒红纸·深底浅字(秦彻纸改红) */
-.f-main[data-board="asko"]     { --fa: #32798c;
-  --card1:#f7fafc; --card2:#e9f0f6; --card-ink:#33505f; --card-soft:#68818f; }  /* 雾蓝(黎深纸) */
-.f-main[data-board="gallery"]  { --fa: #b05e88;
-  --card1:#fef7f6; --card2:#faecea; --card-ink:#5c3a40; --card-soft:#a07078; }  /* 玫瑰粉(祁煜纸) */
+/* 阴影/边框统一中性灰（--shade 见 style.css），不再用暖棕 */
 
-.f-hero { background: linear-gradient(165deg, rgba(255,253,248,.66), rgba(243,247,250,.5)); }
+body { --page-accent: #c05a5e; }   /* 论坛页 accent：暗红（标题+导航高亮） */
+
+.f-main { --fa: #c96f4a; --paper: #f5f2ec; }        /* 兜底：陶土橘/奶油墙 */
+.f-main[data-board="city"]     { --fa: #b57a1e;
+  --card1:#fdf3e7; --card2:#f9e9d8; --card-ink:#4a3a28; --card-soft:#7a6a52; }  /* 奶油杏(小梅·日记信纸) */
+.f-main[data-board="hunters"]  { --fa: #6d4fa8;
+  --card1:#faf8fd; --card2:#f0e9f8; --card-ink:#4a3f5c; --card-soft:#6f6284; }  /* 雾紫(沈星回纸·职业猎人) */
+.f-main[data-board="fleet"]    { --fa: #d98635;
+  --card1:#fffdf6; --card2:#fbf6ea; --card-ink:#3f372c; --card-soft:#776e58; }  /* 奶油米(夏以昼纸·执舰官) */
+.f-main[data-board="darkspot"] { --fa: #c05a5e;   /* 暗点交互色提亮一档，深底上可读 */
+  --card1:#8a383c; --card2:#6e2c30; --card-ink:#f5e6e0; --card-soft:#dba49f; }  /* 暗酒红纸·深底浅字(秦彻纸改红) */
+.f-main[data-board="asko"]     { --fa: #32798c;
+  --card1:#f7fafc; --card2:#e9f0f6; --card-ink:#33505f; --card-soft:#5f7684; }  /* 雾蓝(黎深纸) */
+.f-main[data-board="gallery"]  { --fa: #b05e88;
+  --card1:#fef7f6; --card2:#faecea; --card-ink:#5c3a40; --card-soft:#8f666e; }  /* 玫瑰粉(祁煜纸) */
 
 .f-main {
-  max-width: 1020px; margin: 0 auto; padding: 30px 22px 46px;
+  max-width: 1020px; margin: 0 auto; padding: 26px 22px 46px;
   min-height: 60vh; position: relative;
 }
 /* 板内氛围：整页淡淡浸入板色（奶油底 + 主题色的"撞"） */
@@ -28,56 +30,56 @@
     radial-gradient(760px 540px at -6% 112%, color-mix(in srgb, var(--fa) 16%, transparent), transparent 58%);
 }
 
-/* ---------- 板列表：六色纸板，错落如钉在木墙上 ---------- */
-.f-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 22px 24px; }
+/* ---------- 板列表：苹果磨玻璃卡片 + 板色轻染（干净网格，不再纸纹错落） ---------- */
+.f-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 20px 22px; }
 .f-board {
   position: relative; display: block; text-decoration: none; color: var(--ink, #3f372c);
-  --paper: #f3ecdf;
-  background:
-    repeating-linear-gradient(94deg, rgba(122,92,54,.045) 0 2px, transparent 2px 9px),
-    repeating-linear-gradient(2deg, rgba(122,92,54,.03) 0 1px, transparent 1px 8px),
-    linear-gradient(168deg, color-mix(in srgb, var(--paper) 92%, #fff), var(--paper));
-  border: 1px solid rgba(122,92,54,.22);
-  border-bottom: 2px solid rgba(122,92,54,.28);
-  border-radius: 10px;
+  --fa: #b57a1e;
+  background: linear-gradient(165deg, rgba(255,255,255,.78), rgba(255,255,255,.5));
+  backdrop-filter: blur(22px) saturate(1.15);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  border: 1px solid rgba(255,255,255,.7);
+  border-radius: 18px;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    0 3px 6px rgba(96,74,42,.14),
-    0 16px 30px -12px rgba(96,74,42,.38);          /* 空间阴影：板子浮在墙上 */
+    inset 0 1px 0 rgba(255,255,255,.8),
+    0 1px 2px rgba(56,52,46,.05),
+    0 14px 34px -12px rgba(56,52,46,.16);
   padding: 22px 20px 16px;
-  transform: rotate(var(--tilt, 0deg)) translateY(var(--drop, 0px));
   transition: transform .22s ease, box-shadow .22s ease;
   overflow: hidden;
 }
-.f-board[data-key="city"]     { --paper: #f7ddb0; }  /* 黄油 */
-.f-board[data-key="hunters"]  { --paper: #c3d2da; }  /* 雾蓝 */
-.f-board[data-key="fleet"]    { --paper: #ccd6bd; }  /* 鼠尾草 */
-.f-board[data-key="darkspot"] { --paper: #e8c8c6; }  /* 玫瑰 */
-.f-board[data-key="asko"]     { --paper: #d2c9de; }  /* 薰衣草 */
-.f-board[data-key="gallery"]  { --paper: #e9b9a0; }  /* 陶土 */
-/* 错落：不排直线，像随手钉上去的 */
-.f-board:nth-child(1) { --tilt: -1deg;  --drop: 6px; }
-.f-board:nth-child(2) { --tilt:  .8deg; --drop: -4px; }
-.f-board:nth-child(3) { --tilt: -.5deg; --drop: 10px; }
-.f-board:nth-child(4) { --tilt:  .9deg; --drop: -8px; }
-.f-board:nth-child(5) { --tilt: -.7deg; --drop: 3px; }
-.f-board:nth-child(6) { --tilt:  .6deg; --drop: -5px; }
-.f-board:hover {
-  transform: rotate(0deg) translateY(-5px) scale(1.015);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55),
-    0 6px 12px rgba(96,74,42,.16), 0 24px 44px -14px rgba(96,74,42,.44);
+/* 板色轻染：仅顶部一抹 12% 主题色，保持六板身份但不脏 */
+.f-board::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--fa) 12%, transparent), transparent 55%);
 }
+.f-board > * { position: relative; }   /* 内容抬到色染层之上 */
+.f-board[data-key="city"]     { --fa: #b57a1e; }
+.f-board[data-key="hunters"]  { --fa: #6d4fa8; }
+.f-board[data-key="fleet"]    { --fa: #d98635; }
+.f-board[data-key="darkspot"] { --fa: #c05a5e; }
+.f-board[data-key="asko"]     { --fa: #32798c; }
+.f-board[data-key="gallery"]  { --fa: #b05e88; }
+.f-board:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    0 6px 14px rgba(56,52,46,.10),
+    0 26px 54px -18px color-mix(in srgb, var(--fa) 32%, rgba(56,52,46,.14));
+}
+.f-board:hover h3 { color: var(--fa); }
 .f-board .f-ico { display: block; font-size: 27px; line-height: 1; margin-bottom: 10px;
-  filter: drop-shadow(0 2px 3px rgba(96,74,42,.25)); }
-.f-board h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: .05em; display: flex; align-items: center; gap: 8px; }
-.f-board .f-lock { font-size: 12px; color: #7d5a5c; background: rgba(255,255,255,.4);
+  filter: drop-shadow(0 2px 3px rgba(56,52,46,.18)); }
+.f-board h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: .05em; display: flex; align-items: center; gap: 8px;
+  transition: color .18s ease; }
+.f-board .f-lock { font-size: 12px; color: #8a565a; background: rgba(192,90,94,.12);
   border-radius: 6px; padding: 1px 7px; }
-.f-board p { margin: 0; font-size: 13px; line-height: 1.7; color: #5d554a; }
-.f-board .f-meta { margin-top: 14px; font-size: 11.5px; color: rgba(63,55,44,.62);
-  border-top: 1px dashed rgba(122,92,54,.3); padding-top: 9px; }
+.f-board p { margin: 0; font-size: 13px; line-height: 1.7; color: #4f4a42; }
+.f-board .f-meta { margin-top: 14px; font-size: 11.5px; color: rgba(60,56,50,.72);
+  border-top: 1px solid rgba(56,52,46,.10); padding-top: 9px; }
 
 /* ---------- 板内帖子流：奶油纸 + 主题色竖线与浸染 ---------- */
-.f-crumb { margin: 0 0 16px; font-size: 13px; color: #8a93a6; }
+.f-crumb { margin: 0 0 16px; font-size: 13px; color: var(--ink-soft, #6e675e); }
 .f-crumb a { color: inherit; text-decoration: none; }
 .f-crumb a:hover { color: var(--fa); }
 .f-new-thread {
@@ -89,24 +91,24 @@
 .f-thread {
   display: block; text-decoration: none; color: inherit;
   background: linear-gradient(165deg, var(--card1), var(--card2));
-  backdrop-filter: blur(20px) saturate(1.65);
-  -webkit-backdrop-filter: blur(20px) saturate(1.65);
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
   border: 1px solid rgba(255,255,255,.55);
   border-radius: 18px; padding: 15px 19px; margin-bottom: 14px;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.75),
-    0 1px 2px rgba(74,66,56,.05),
-    0 10px 28px -8px rgba(96,74,42,.16),
-    0 24px 64px -16px rgba(96,74,42,.13);
+    0 1px 2px rgba(var(--shade,56,52,46),.05),
+    0 10px 28px -8px rgba(var(--shade,56,52,46),.14),
+    0 24px 64px -16px rgba(var(--shade,56,52,46),.11);
   transition: transform .18s ease, box-shadow .18s ease;
 }
 .f-thread:hover {
   transform: translateY(-3px);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.8),
-    0 1px 2px rgba(74,66,56,.05),
-    0 14px 34px -8px color-mix(in srgb, var(--fa) 24%, rgba(96,74,42,.16)),
-    0 28px 72px -16px color-mix(in srgb, var(--fa) 20%, rgba(96,74,42,.13));
+    0 1px 2px rgba(var(--shade,56,52,46),.05),
+    0 14px 34px -8px color-mix(in srgb, var(--fa) 24%, rgba(var(--shade,56,52,46),.14)),
+    0 28px 72px -16px color-mix(in srgb, var(--fa) 20%, rgba(var(--shade,56,52,46),.11));
 }
 .f-thread .f-t-title { font-size: 15px; font-weight: 600; margin: 0 0 5px; line-height: 1.5;
   color: var(--card-ink); }
@@ -117,22 +119,22 @@
 .f-op, .f-floor {
   border-radius: 18px; padding: 19px 22px; margin-bottom: 14px;
   border: 1px solid rgba(255,255,255,.55);
-  backdrop-filter: blur(22px) saturate(1.7);
-  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  backdrop-filter: blur(22px) saturate(1.15);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
 }
 .f-op {
   background: linear-gradient(168deg, var(--card1), var(--card2));
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.78),
-    0 12px 32px -8px color-mix(in srgb, var(--fa) 20%, rgba(96,74,42,.18)),
-    0 28px 72px -16px rgba(96,74,42,.14);
+    0 12px 32px -8px color-mix(in srgb, var(--fa) 20%, rgba(var(--shade,56,52,46),.16)),
+    0 28px 72px -16px rgba(var(--shade,56,52,46),.12);
 }
 .f-floor {
   background: linear-gradient(168deg, color-mix(in srgb, var(--card1) 78%, #fff), color-mix(in srgb, var(--card2) 82%, #fff));
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.7),
-    0 4px 14px -6px rgba(96,74,42,.14),
-    0 16px 44px -14px rgba(96,74,42,.10);
+    0 4px 14px -6px rgba(var(--shade,56,52,46),.12),
+    0 16px 44px -14px rgba(var(--shade,56,52,46),.09);
 }
 .f-op h2 { margin: 0 0 6px; font-size: 20px; line-height: 1.5; color: var(--card-ink); }
 .f-op .f-op-content { font-size: 14px; line-height: 1.9; white-space: pre-wrap; margin: 10px 0 6px; color: var(--card-ink); }
@@ -144,14 +146,14 @@
 /* ---------- 发帖/回复表单 & 暗号 ---------- */
 .f-form {
   background: linear-gradient(168deg, var(--card1), var(--card2));
-  backdrop-filter: blur(20px) saturate(1.6);
-  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
   border: 1px solid rgba(255,255,255,.55);
   border-radius: 18px; padding: 16px 19px; margin: 16px 0;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.72),
-    0 8px 24px -8px rgba(96,74,42,.16),
-    0 20px 56px -14px rgba(96,74,42,.10);
+    0 8px 24px -8px rgba(var(--shade,56,52,46),.14),
+    0 20px 56px -14px rgba(var(--shade,56,52,46),.09);
 }
 .f-form input[type=text], .f-form textarea {
   width: 100%; box-sizing: border-box; border: 1px solid rgba(0,0,0,.1);
@@ -189,5 +191,4 @@
   box-shadow: 0 6px 16px rgba(120,40,44,.45); }
 .f-pass .f-err { color: #d98e8e; font-size: 12px; margin-top: 10px; min-height: 16px; }
 
-.m-empty { text-align: center; color: #b3b9c4; padding: 60px 0; }
 .sentinel { height: 2px; }

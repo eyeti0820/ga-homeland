@@ -1,0 +1,32 @@
+# session 易变（每 session 覆盖重写）
+next_session_handoff_prompt.md
+
+# 运行时数据（正式库，schema.sql 为唯一真相源）
+*.db
+*.db-journal
+
+# 隔离环境（server/venv/bin/pip install -r requirements.txt 重建）
+server/venv/
+
+# Python 缓存 / 系统垃圾
+__pycache__/
+*.pyc
+.DS_Store
+
+# 外部资产：素材库只读红线（源头独立保存，不归本项目版本控制）
+恋与深空故事素材/
+
+# 外部同步的技能副本（源头在 trae / ~/.config/opencode/skills）
+_dev_skills/
+
+# 清库备份
+*.bak
+
+# 过程产物（验收截图/开发过程文档）——本地保留,不进仓库
+docs/*.png
+findings_*.md
+handoff_*.md
+progress*.md
+task_plan_*.md
+开发方案_*.md
+next_session_handoff_prompt.md

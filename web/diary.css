@@ -1,0 +1,155 @@
+/* ============================================================
+   交换日记 · 竖排时间线纸页 + 夹页回信（复用便签墙设计语言）
+   ============================================================ */
+.diary-title span { color: var(--cool); }
+
+/* 角色标签页（一人一本） */
+.diary-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.diary-tab {
+  border: 1px solid rgba(74,66,56,.18); border-radius: 999px;
+  background: rgba(255,255,255,.5); color: var(--ink-soft);
+  font-family: var(--font-ui); font-size: 13px; letter-spacing: .08em;
+  padding: 5px 14px; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(74,66,56,.08);
+  transition: all .15s ease;
+}
+.diary-tab:hover { background: rgba(255,255,255,.85); }
+.diary-tab.on {
+  background: var(--cool); border-color: var(--cool); color: #fdfaf3;
+  box-shadow: 0 2px 6px rgba(94,128,120,.35);
+}
+
+/* 时间线 */
+.diary-wrap {
+  position: relative; z-index: 1;
+  max-width: 680px; margin: 14px auto 0; padding: 0 16px 60px;
+}
+.diary-book { display: flex; flex-direction: column; gap: 26px; }
+
+/* 日记纸页：装订孔 + 横线信纸 */
+.diary-page {
+  /* 纸色变量：默认=夏以昼奶油纸；五人配色见文件尾 [data-actor="N"] 覆盖 */
+  --pg-bg1: #fffdf6; --pg-bg2: #fbf6ea;
+  --pg-line: rgba(94,128,120,.13);
+  --pg-coil: rgba(74,66,56,.22);
+  --pg-ink: var(--ink);
+  --pg-soft: var(--ink-soft);
+  --pg-accent: rgba(201,123,90,.55);
+  --pg-accent-ink: var(--warm);
+  --pg-accent-glow: rgba(201,123,90,.12);
+  --pg-edge: var(--paper-edge);
+  --pg-shadow: 74,66,56;
+  position: relative;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 27px, var(--pg-line) 27px 28px),
+    linear-gradient(180deg, var(--pg-bg1), var(--pg-bg2));
+  border-radius: 6px;
+  padding: 26px 26px 18px 44px;
+  box-shadow: 0 1px 2px rgba(var(--pg-shadow),.12), 0 10px 24px rgba(var(--pg-shadow),.10),
+              inset 0 1px 0 var(--pg-edge);
+  transform: rotate(var(--tilt, 0deg));
+}
+/* 左侧装订线圈 */
+.diary-page::before {
+  content: ""; position: absolute; left: 14px; top: 18px; bottom: 18px; width: 2px;
+  background: repeating-linear-gradient(180deg, var(--pg-coil) 0 6px, transparent 6px 16px);
+}
+.diary-page-head {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  font-family: var(--font-ui); font-size: 12.5px; color: var(--pg-soft); letter-spacing: .06em;
+}
+.diary-mood {
+  margin-left: auto; border: 1.5px solid var(--pg-accent); color: var(--pg-accent-ink);
+  border-radius: 4px; transform: rotate(-3deg);
+  padding: 2px 8px; font-size: 12px; letter-spacing: .12em;
+  box-shadow: inset 0 0 6px var(--pg-accent-glow);
+}
+.diary-body {
+  font-family: var(--font-hand); font-size: 15.5px; line-height: 28px;
+  white-space: pre-wrap; word-break: break-word; color: var(--pg-ink);
+}
+
+/* 夹页回信：小一号信纸，微微旋转，像夹在日记里 */
+.diary-letter {
+  position: relative; margin: 16px 4px 4px 26px;
+  background: linear-gradient(180deg, #fdf3e7, #f9e9d8);
+  border: 1px solid rgba(201,123,90,.22); border-left: 4px solid rgba(201,123,90,.5);
+  border-radius: 4px; padding: 12px 16px;
+  transform: rotate(-.6deg);
+  box-shadow: 0 6px 14px rgba(74,66,56,.10);
+}
+.diary-letter-who {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 6px;
+  font-size: 12px; color: var(--ink-soft); letter-spacing: .08em;
+}
+.diary-letter-body {
+  font-family: var(--font-hand); font-size: 14px; line-height: 24px;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* 回信输入区 */
+.diary-letter-form { margin: 14px 4px 0 26px; display: flex; flex-direction: column; gap: 8px; }
+.diary-letter-form textarea {
+  width: 100%; resize: vertical; min-height: 56px; max-height: 200px;
+  border: 1px dashed rgba(201,123,90,.5); border-radius: 4px;
+  background: rgba(255,253,248,.8); color: var(--ink);
+  font-family: var(--font-hand); font-size: 14px; line-height: 24px; padding: 10px 12px;
+}
+.diary-letter-form textarea:focus { outline: none; border-style: solid; background: #fffdf8; }
+.diary-send {
+  align-self: flex-end; border: none; border-radius: 999px; cursor: pointer;
+  background: var(--warm); color: #fdfaf3; font-size: 13px; letter-spacing: .14em;
+  padding: 6px 18px; box-shadow: 0 2px 6px rgba(201,123,90,.35);
+}
+.diary-send:disabled { opacity: .5; cursor: default; }
+
+.diary-more {
+  display: block; margin: 26px auto 0; border: 1px solid rgba(74,66,56,.2);
+  background: rgba(255,255,255,.5); color: var(--ink-soft);
+  border-radius: 999px; padding: 7px 22px; font-size: 13px; letter-spacing: .1em; cursor: pointer;
+}
+.diary-more:hover { background: rgba(255,255,255,.85); }
+.diary-empty {
+  text-align: center; font-family: var(--font-hand); color: var(--ink-soft);
+  font-size: 16px; line-height: 2; padding: 60px 0; letter-spacing: .1em;
+}
+
+@media (max-width: 640px) {
+  .diary-page { padding: 20px 16px 14px 34px; }
+  .diary-letter, .diary-letter-form { margin-left: 14px; }
+}
+
+/* ---------- 五人纸色（奶油莫兰迪） ----------
+   1 夏以昼=奶油米(默认,上方变量) 2 沈星回=雾紫 3 黎深=雾蓝 4 秦彻=黑红(深底浅字) 5 祁煜=樱粉 */
+.diary-page[data-actor="2"] {
+  --pg-bg1: #faf8fd; --pg-bg2: #f0e9f8;
+  --pg-line: rgba(147,125,180,.13);
+  --pg-coil: rgba(84,72,104,.25);
+  --pg-ink: #4a3f5c; --pg-soft: #7d6f94;
+  --pg-accent: rgba(147,110,190,.5); --pg-accent-ink: #7a5eb0; --pg-accent-glow: rgba(147,110,190,.12);
+  --pg-edge: rgba(255,255,255,.55); --pg-shadow: 74,66,86;
+}
+.diary-page[data-actor="3"] {   /* 秦彻：黑红炭纸（深底浅字） */
+  --pg-bg1: #413036; --pg-bg2: #2c2126;
+  --pg-line: rgba(235,190,185,.12);
+  --pg-coil: rgba(244,220,215,.28);
+  --pg-ink: #f2e4e1; --pg-soft: #c9aba8;
+  --pg-accent: rgba(232,120,110,.55); --pg-accent-ink: #f0978d; --pg-accent-glow: rgba(232,120,110,.16);
+  --pg-edge: rgba(255,255,255,.07); --pg-shadow: 0,0,0;
+}
+.diary-page[data-actor="4"] {   /* 黎深：雾蓝 */
+  --pg-bg1: #f7fafc; --pg-bg2: #e9f0f6;
+  --pg-line: rgba(105,135,160,.14);
+  --pg-coil: rgba(66,84,96,.25);
+  --pg-ink: #33505f; --pg-soft: #68818f;
+  --pg-accent: rgba(90,130,165,.5); --pg-accent-ink: #4d7ba0; --pg-accent-glow: rgba(90,130,165,.12);
+  --pg-edge: rgba(255,255,255,.55); --pg-shadow: 56,72,84;
+}
+.diary-page[data-actor="5"] {
+  --pg-bg1: #fef7f6; --pg-bg2: #faecea;
+  --pg-line: rgba(200,130,140,.12);
+  --pg-coil: rgba(104,70,76,.22);
+  --pg-ink: #5c3a40; --pg-soft: #a07078;
+  --pg-accent: rgba(214,120,134,.5); --pg-accent-ink: #cc6f80; --pg-accent-glow: rgba(214,120,134,.12);
+  --pg-edge: rgba(255,255,255,.55); --pg-shadow: 74,60,62;
+}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家园 · 交换日记</title>
+<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="diary.css?v=2">
+</head>
+<body>
+<div class="wall-vignette" aria-hidden="true"></div>
+
+<header class="wall-head">
+  <div class="head-left">
+    <h1 class="wall-title diary-title">交换<span>日记</span></h1>
+    <p class="wall-sub">一人一本，深夜见字如面 · <a class="back-wall" href="/">← 便签墙</a> · <a class="back-wall" href="moments.html">📷 朋友圈</a> · <a class="back-wall" href="forum.html">💬 论坛</a></p>
+  </div>
+  <div class="head-right" id="diary-tabs"></div>
+</header>
+
+<main class="diary-wrap">
+  <section class="diary-book" id="diary-book"></section>
+  <p class="diary-empty" id="diary-empty" hidden>这一本还是空的。<br>夜猫子时段（22:30±）他会来写第一页。</p>
+  <button class="diary-more" id="diary-more" hidden>翻更早的页 ︙</button>
+</main>
+
+<script src="diary.js?v=2"></script>
+</body>
+</html>

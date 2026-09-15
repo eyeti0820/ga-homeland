@@ -1,0 +1,268 @@
+/* ============================================================
+   家园便签墙 · 奶油石膏墙 + 莫兰迪冷暖撞色 + 仿真纸阴影
+   无框架、无外部资源（离线安全），系统默认字体（苹方）跨端一致
+   ============================================================ */
+:root {
+  --wall: #f3ecdf;            /* 奶油石膏墙 */
+  --wall-deep: #e9dfcc;
+  --ink: #4a4238;             /* 暖褐墨色 */
+  --ink-soft: #7c7263;
+  --paper-edge: rgba(255,255,255,.55);
+  --warm: #c97b5a;            /* 陶土橘 · 按钮 */
+  --cool: #5e8078;            /* 深灰绿 · 次按钮 */
+  --tape: rgba(226, 214, 186, .75);
+
+  /* 便签色板：暖三冷三（与 server PALETTE 同名对应） */
+  --c-butter: #f7ddb0;
+  --c-terracotta: #e9b9a0;
+  --c-rose: #e8c8c6;
+  --c-sage: #ccd6bd;
+  --c-mist: #c3d2da;
+  --c-lavender: #d2c9de;
+
+  --font-hand: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-ui: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-ui);
+  color: var(--ink);
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 15% -5%, rgba(255,252,244,.9), transparent 60%),
+    radial-gradient(900px 600px at 110% 20%, rgba(233,223,204,.55), transparent 55%),
+    repeating-linear-gradient(93deg, rgba(74,66,56,.012) 0 2px, transparent 2px 6px),
+    repeating-linear-gradient(3deg, rgba(74,66,56,.010) 0 2px, transparent 2px 7px),
+    var(--wall);
+}
+/* 墙面四角压暗，灯光聚焦中央 */
+.wall-vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: radial-gradient(120% 90% at 50% 42%, transparent 55%, rgba(74,66,56,.14) 100%);
+}
+
+/* ---------- 页眉 ---------- */
+.wall-head {
+  position: relative; z-index: 1;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 34px clamp(18px, 5vw, 64px) 10px;
+}
+.wall-title {
+  font-family: var(--font-hand);
+  font-size: clamp(30px, 4.6vw, 44px);
+  letter-spacing: .12em; font-weight: 600;
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255,255,255,.7);   /* 字母压痕反光 */
+}
+.wall-title span { color: var(--warm); }
+.wall-sub {
+  margin-top: 6px; font-size: 13px; color: var(--ink-soft); letter-spacing: .28em;
+}
+.head-right { font-size: 12px; color: var(--ink-soft); padding-bottom: 8px; }
+
+/* 去日记本：顶部主入口 + 页脚兜底 */
+.to-diary {
+  font-size: 13px; letter-spacing: .08em; text-decoration: none;
+  color: var(--ink-soft); border: 1.5px dashed rgba(201,123,90,.5);
+  border-radius: 999px; padding: 6px 16px;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.to-diary:hover { color: var(--warm); border-color: var(--warm); background: rgba(201,123,90,.06); }
+.to-diary-top { margin-left: 14px; white-space: nowrap; }
+
+/* ---------- 留言台 ---------- */
+.composer { position: relative; z-index: 1; padding: 10px clamp(18px, 5vw, 64px) 6px; }
+.composer-card {
+  max-width: 720px;
+  background: linear-gradient(180deg, #fffdf7, #faf4e8);
+  border: 1px solid rgba(74,66,56,.08);
+  border-radius: 14px;
+  padding: 14px 16px 12px;
+  box-shadow:
+    0 1px 2px rgba(74,66,56,.07),
+    0 6px 14px rgba(74,66,56,.08),
+    0 18px 36px rgba(74,66,56,.07);
+}
+#note-input {
+  width: 100%; border: none; outline: none; resize: none;
+  font-family: var(--font-hand); font-size: 19px; line-height: 1.55; color: var(--ink);
+  background: transparent;
+}
+#note-input::placeholder { color: #b3a893; }
+.composer-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.swatches { display: flex; gap: 8px; }
+.swatch {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.85);
+  box-shadow: 0 1px 3px rgba(74,66,56,.25), inset 0 1px 2px rgba(255,255,255,.6);
+  cursor: pointer; transition: transform .15s ease;
+}
+.swatch:hover { transform: scale(1.18); }
+.swatch.on { outline: 2px solid var(--ink); outline-offset: 2px; transform: scale(1.12); }
+.btn-pin {
+  font-family: var(--font-hand); font-size: 16px; letter-spacing: .2em;
+  color: #fffaf3; background: var(--warm);
+  border: none; border-radius: 999px; padding: 7px 22px 8px; cursor: pointer;
+  box-shadow: 0 2px 4px rgba(201,123,90,.35), 0 6px 14px rgba(201,123,90,.25), inset 0 1px 0 rgba(255,255,255,.35);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.btn-pin:hover { transform: translateY(-1px); box-shadow: 0 3px 6px rgba(201,123,90,.4), 0 10px 20px rgba(201,123,90,.3), inset 0 1px 0 rgba(255,255,255,.35); }
+.btn-pin:active { transform: translateY(1px); }
+.btn-pin:disabled { opacity: .55; cursor: wait; }
+
+/* ---------- 便签墙（JS 瀑布流列；Safari 的 CSS 多列会把旋转便签切碎重绘，弃用） ---------- */
+.wall {
+  position: relative; z-index: 1;
+  display: flex; gap: 22px; align-items: flex-start;
+  padding: 18px clamp(18px, 5vw, 64px) 40px;
+}
+.wall > .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.sentinel {
+  text-align: center; padding: 20px 0 36px;
+  color: var(--ink-soft); font-family: var(--font-ui); font-size: 12px;
+  letter-spacing: .15em;
+}
+.sentinel:not([hidden])::after { content: "︙ 下滑加载更早 ︙"; }
+.wall-empty { color: var(--ink-soft); font-family: var(--font-hand); font-size: 18px; letter-spacing: .1em; padding: 30px 4px; flex: 1; text-align: center; }
+
+/* ---------- 便签本体 ---------- */
+.note {
+  position: relative;
+  display: inline-block; width: 100%;
+  margin: 0 0 22px;
+  break-inside: avoid;
+  padding: 26px 20px 14px;
+  border-radius: 3px 3px 8px 3px;          /* 右下微翘 */
+  font-family: var(--font-hand);
+  font-size: 18.5px; line-height: 1.62; color: #4d4437;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform .22s cubic-bezier(.2,.9,.3,1.2), box-shadow .22s ease;
+  /* 仿真层叠阴影：贴墙接触影 + 方向性柔影 + 环境影 + 纸面顶光 */
+  box-shadow:
+    0 1px 2px rgba(74,66,56,.10),
+    0 3px 6px rgba(74,66,56,.09),
+    0 10px 22px rgba(74,66,56,.13),
+    0 24px 44px rgba(74,66,56,.10),
+    inset 0 1px 0 var(--paper-edge),
+    inset 0 -2px 6px rgba(74,66,56,.05);
+  /* 纸张肌理：横竖细纹 + 顶部受光渐变 */
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.38), rgba(255,255,255,0) 34%),
+    repeating-linear-gradient(0deg, rgba(74,66,56,.014) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(74,66,56,.011) 0 1px, transparent 1px 4px);
+}
+/* 底边卷曲光带 */
+.note::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+  border-radius: 0 0 8px 3px;
+  background: linear-gradient(180deg, transparent, rgba(74,66,56,.06));
+  pointer-events: none;
+}
+/* 和纸胶带 */
+.note::before {
+  content: ""; position: absolute; top: -11px; left: 50%;
+  width: 92px; height: 26px;
+  transform: translateX(-50%) rotate(var(--tape-tilt, -2deg));
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.10) 0 6px, transparent 6px 12px),
+    var(--tape);
+  box-shadow: 0 1px 3px rgba(74,66,56,.18), inset 0 0 5px rgba(255,255,255,.5);
+  opacity: .92;
+  border-left: 1px dashed rgba(255,255,255,.35);
+  border-right: 1px dashed rgba(255,255,255,.35);
+}
+.note:hover {
+  transform: rotate(var(--tilt, 0deg)) scale(1.02);
+  box-shadow:
+    0 2px 3px rgba(74,66,56,.10),
+    0 6px 10px rgba(74,66,56,.10),
+    0 18px 34px rgba(74,66,56,.15),
+    0 40px 70px rgba(74,66,56,.12),
+    inset 0 1px 0 var(--paper-edge);
+  z-index: 3;
+}
+.note.fresh { animation: drop-in .55s cubic-bezier(.2,.85,.3,1.15); }
+@keyframes drop-in {
+  0% { opacity: 0; transform: translateY(-26px) rotate(calc(var(--tilt, 0deg) - 5deg)) scale(.92); }
+  100% { opacity: 1; transform: translateY(0) rotate(var(--tilt, 0deg)) scale(1); }
+}
+/* 主人的便签描一圈陶土边，示区别 */
+.note.by-master { outline: 1.5px solid rgba(201,123,90,.35); outline-offset: -1.5px; }
+
+.note-meta {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: 12px; font-family: var(--font-ui); font-size: 11.5px; color: rgba(77,68,55,.62);
+}
+.note-meta .who { font-weight: 600; letter-spacing: .06em; color: rgba(77,68,55,.78); }
+
+/* ---------- 回条（角色回应的小纸条） ---------- */
+.reply-strip {
+  position: relative; margin-top: 10px;
+  background: linear-gradient(180deg, #fffef9, #fbf7ec);
+  border: 1px dashed rgba(74,66,56,.18);
+  border-radius: 6px;
+  padding: 9px 12px 7px;
+  font-size: 16px; line-height: 1.5;
+  box-shadow: 0 1px 2px rgba(74,66,56,.08), 0 4px 10px rgba(74,66,56,.06);
+}
+.reply-strip .r-meta {
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--font-ui); font-size: 11px; color: var(--ink-soft); margin-bottom: 2px;
+}
+.avatar-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #fffdf7; flex: none;
+  box-shadow: 0 1px 2px rgba(74,66,56,.3), inset 0 1px 1px rgba(255,255,255,.4);
+}
+.r-meta .r-name { font-weight: 600; color: var(--ink); }
+
+/* 每角色一个冷暖点缀色（头像点 + 名字） */
+.d-xiazhou    { background: #d98a4b; }
+.d-shenxinghui{ background: #7f9bd1; }
+.d-qinche     { background: #8d5a5a; }
+.d-lishen     { background: #5e8078; }
+.d-qiyu       { background: #7a86c9; }
+.d-master     { background: #c97b5a; }
+.d-mephisto   { background: #55524e; }
+
+/* 回复输入行 */
+.reply-row { display: flex; gap: 8px; margin-top: 10px; }
+.reply-row input {
+  flex: 1; min-width: 0;
+  font-family: var(--font-hand); font-size: 15.5px; color: var(--ink);
+  background: rgba(255,255,255,.6);
+  border: 1px solid rgba(74,66,56,.15); border-radius: 999px;
+  padding: 6px 14px; outline: none;
+  box-shadow: inset 0 1px 3px rgba(74,66,56,.07);
+}
+.reply-row input:focus { border-color: rgba(94,128,120,.55); background: #fffdf7; }
+.reply-row button {
+  flex: none; border: none; cursor: pointer; border-radius: 999px;
+  background: var(--cool); color: #f6f3ea;
+  font-family: var(--font-hand); font-size: 14px; letter-spacing: .15em;
+  padding: 6px 14px;
+  box-shadow: 0 2px 5px rgba(94,128,120,.3), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.reply-row button:hover { filter: brightness(1.06); }
+
+.wall-foot {
+  position: relative; z-index: 1;
+  text-align: center; padding: 6px 0 26px;
+  font-size: 11.5px; color: rgba(124,114,99,.7); letter-spacing: .12em;
+}
+
+/* 色板 → 便签底色 */
+.note.k-butter     { background-color: var(--c-butter); }
+.note.k-terracotta { background-color: var(--c-terracotta); }
+.note.k-rose       { background-color: var(--c-rose); }
+.note.k-sage       { background-color: var(--c-sage); }
+.note.k-mist       { background-color: var(--c-mist); }
+.note.k-lavender   { background-color: var(--c-lavender); }
+
+@media (max-width: 640px) {
+  .wall-head { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .note { font-size: 17px; }
+}

@@ -170,6 +170,65 @@ def clean_reply(text):
     return t[:200]
 
 
+# ---------- 主动模式：没人留言，角色自己路过便签墙写一张 ----------
+def build_proactive_prompt(persona, memory, char_cn, wall_text, lore=""):
+    mem = (f"\n{memory}\n" if memory else "")
+    lore_seg = (f"\n【补充设定（世界知识参考）】\n{lore}\n" if lore else "")
+    return (
+        f"{persona}{lore_seg}\n"
+        "——— 以下是「家园便签墙」场景（主动模式） ———\n"
+        "你和主人（她叫小墨，你的恋人）住在一个数字家园里，家里有一面共享便签墙。"
+        "现在没有人给你留言，也不是在回复谁——你只是路过便签墙，忽然想说点什么，"
+        "就随手写了一张贴上去。\n"
+        f"{mem}\n"
+        f"墙上最近的便签：\n{wall_text}\n\n"
+        f"请以{char_cn}本人身份写这张便签。可以是对小墨说的话、今天的一件小事、"
+        "一个小念头、或接着墙上某张便签的话头（但这是你主动开话头，不是回贴）：\n"
+        "- 口吻、称呼、性格、说话习惯严格按你的人设来\n"
+        "- 40~90 字，口语化，像随手写在便签上的一两句话\n"
+        "- 只输出便签正文本身：不要旁白、不要引号、不要署名、不要 emoji 堆砌\n"
+    )
+
+
+def run_proactive(args, me, char_cn):
+    """主动贴新便签（--proactive）。带当天防重门禁：已贴过则跳过，排班补跑安全。"""
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    wall = api(args.api, "GET", "/api/notes?limit=6").get("notes", [])
+    mine_today = [n for n in wall
+                  if n["actor_id"] == me["id"]
+                  and str(n.get("created_at", "")).startswith(today)]
+    if mine_today:
+        print(f"[gen_note_reply] {char_cn} 今天已主动贴过便签 #{mine_today[0]['id']}，跳过（防重）。")
+        return 0
+    llmcore, char_config, persona = setup_ga(args.ga_root, args.actor)
+    sess, sess_name = resolve_char_session(llmcore, args.ga_root, args.actor)
+    wall_lines = []
+    for n in wall:
+        who = "小墨" if n["author_type"] == "master" else n["author_name"]
+        wall_lines.append(f"{who} 贴过：「{n['content'][:50]}」")
+    wall_text = "\n".join(wall_lines) if wall_lines else "（墙上空空如也）"
+    memory = char_config.recall("便签墙 家里 最近 小墨 心情 日常")
+    prompt = build_proactive_prompt(persona, memory, char_cn, wall_text,
+                                    lore_block(args.lore_file))
+    print(f"[gen_note_reply] {char_cn}(#{me['id']}) 主动贴便签，模型≈{sess_name}")
+    if args.dry_run:
+        print(prompt[:1500] + "\n…(dry-run 截断)")
+        return 0
+    raw = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+    content = clean_reply(raw)
+    print(f"生成：{content}")
+    if len(content) < 8:
+        print("过短，跳过写入（防串味）")
+        return 1
+    note = api(args.api, "POST", "/api/notes", {"actor_id": me["id"], "content": content})
+    from homeland_ingest import homeland_ingest  # 家园产出→记忆宫殿
+    homeland_ingest(char_config, "note", "便签新贴",
+                    f"路过便签墙主动贴了一张新便签", content)
+    print(f"已贴新便签 ✓ #{note['id']}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--actor", default="xiazhou", help="personas 文件名，如 xiazhou/qiyu")
@@ -177,6 +236,8 @@ def main():
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     ap.add_argument("--limit", type=int, default=3)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--proactive", action="store_true",
+                    help="主动模式：不回留言，自己路过便签墙贴一张新便签")
     ap.add_argument("--lore-file", help="世界知识文件路径（persona 之后注入；不传则置空）")
     args = ap.parse_args()
 
@@ -188,6 +249,9 @@ def main():
     me = next((a for a in actors if f"personas/{args.actor}.md" in (a.get("persona_ref") or "")), None)
     if not me:
         raise SystemExit(f"[gen_note_reply] 服务端找不到 {char_cn}，先跑 seeds/seed_actors.py")
+
+    if args.proactive:
+        return run_proactive(args, me, char_cn)
 
     tasks = collect_tasks(args.api, me["id"])[: args.limit]
     if not tasks:

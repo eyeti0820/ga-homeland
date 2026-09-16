@@ -88,7 +88,7 @@ function updateNoteEl(el, n) {
   const row = el.querySelector(".reply-row");
   const tpl = document.createElement("template");
   tpl.innerHTML = (n.replies || []).map(stripHtml).join("");
-  tpl.content.childNodes.forEach((x) => el.insertBefore(x, row));
+  [...tpl.content.childNodes].forEach((x) => el.insertBefore(x, row)); // 快照迭代: childNodes是live列表,边移边迭代会跳档丢条(踩坑:主人回复不显示)
 }
 
 function noteEl(n, fresh) {

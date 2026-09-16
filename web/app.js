@@ -72,6 +72,7 @@ function stripHtml(r) {
           <span class="avatar-dot d-${rslug}">${esc((r.author_name || "?").slice(0, 1))}</span>
           <span class="r-name">${esc(r.author_name)}</span>
           <span>${fmtTime(r.created_at)}</span>
+          ${r.author_type === "master" ? `<button class="del-x rx" data-del-reply="${r.id}" title="删除这条回复">×</button>` : ""}
         </div>
         ${esc(r.content)}
       </div>`;
@@ -101,6 +102,7 @@ function noteEl(n, fresh) {
   el.style.setProperty("--tape-tilt", `${((n.id * 7) % 5 - 2) * 1.5}deg`);
 
   el.innerHTML = `
+    ${n.author_type === "master" ? `<button class="del-x" data-del-note="${n.id}" title="删除这张便签">×</button>` : ""}
     <div class="note-body">${esc(n.content)}</div>
     <div class="note-meta">
       <span class="who">${esc(n.author_name)}</span>
@@ -151,6 +153,11 @@ function syncNotes(notes) {
     lastSeenIds.add(n.id);
     newestId = Math.max(newestId, n.id);
     if (n.id < oldestId) oldestId = n.id;
+  });
+  const alive = new Set(notes.map((n) => n.id));
+  wall.querySelectorAll(".note").forEach((el) => {
+    const id = +el.dataset.id;
+    if (!alive.has(id)) { el.remove(); lastSeenIds.delete(id); }
   });
   renderMeta();
   layoutWall();
@@ -283,6 +290,10 @@ async function refresh() {
     }
   });
   $("#wall").addEventListener("click", (ev) => {
+    const dn = ev.target.closest("[data-del-note]");
+    if (dn) { delNote(+dn.dataset.delNote); return; }
+    const dr = ev.target.closest("[data-del-reply]");
+    if (dr) { delReply(+dr.dataset.delReply); return; }
     if (ev.target.matches(".reply-row button")) {
       const input = document.querySelector(`.reply-row input[data-note="${ev.target.dataset.note}"]`);
       if (input) sendReply(+ev.target.dataset.note, input);
@@ -306,3 +317,27 @@ async function refresh() {
     }, { passive: true });
   }
 })();
+
+
+/* ---------- 主人删除（M4.5） ---------- */
+async function jdel(url) {
+  const r = await fetch(url, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+}
+async function delNote(id) {
+  if (!confirm("撕掉这张便签？（连回复一起消失）")) return;
+  try {
+    await jdel(`/api/notes/${id}`);
+    const el = $("#wall").querySelector(`.note[data-id="${id}"]`);
+    if (el) el.remove();
+    lastSeenIds.delete(id);
+    layoutWall();
+  } catch (e) { alert("没撕掉：" + e.message); }
+}
+async function delReply(id) {
+  if (!confirm("删掉这条回复？")) return;
+  try {
+    await jdel(`/api/note-replies/${id}`);
+    await syncNow();
+  } catch (e) { alert("没删掉：" + e.message); }
+}

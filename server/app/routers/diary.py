@@ -159,3 +159,35 @@ def diary_pending_replies(actor_id: int, limit: int = 5, conn=Depends(get_db)):
         ).fetchone())["name"]
         items.append(d)
     return {"count": len(items), "replies": items}
+
+# ---------------- 主人删除（M4.5: 只删主人自己发的内容）----------------
+def _master_guard(conn, actor_id: int):
+    row = conn.execute("SELECT type FROM actors WHERE id=?", (actor_id,)).fetchone()
+    if row is None or row["type"] != "master":
+        raise HTTPException(403, "仅主人可删除自己发的内容")
+
+
+@router.delete("/diary/entries/{entry_id}")
+def delete_entry(entry_id: int, conn=Depends(get_db)):
+    row = conn.execute("SELECT actor_id FROM diary_entries WHERE id=?", (entry_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"entry {entry_id} not found")
+    _master_guard(conn, row["actor_id"])
+    for r in conn.execute("SELECT id FROM diary_replies WHERE entry_id=?", (entry_id,)).fetchall():
+        conn.execute("DELETE FROM unread_interactions WHERE kind='master_diary_reply' AND ref_id=?", (r["id"],))
+    conn.execute("DELETE FROM diary_replies WHERE entry_id=?", (entry_id,))
+    conn.execute("DELETE FROM diary_entries WHERE id=?", (entry_id,))
+    conn.commit()
+    return {"deleted": "diary_entry", "id": entry_id}
+
+
+@router.delete("/diary/replies/{reply_id}")
+def delete_diary_reply(reply_id: int, conn=Depends(get_db)):
+    row = conn.execute("SELECT author_id FROM diary_replies WHERE id=?", (reply_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"reply {reply_id} not found")
+    _master_guard(conn, row["author_id"])
+    conn.execute("DELETE FROM unread_interactions WHERE kind='master_diary_reply' AND ref_id=?", (reply_id,))
+    conn.execute("DELETE FROM diary_replies WHERE id=?", (reply_id,))
+    conn.commit()
+    return {"deleted": "diary_reply", "id": reply_id}

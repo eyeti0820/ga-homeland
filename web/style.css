@@ -274,3 +274,14 @@ body {
   .app-aside { justify-content: flex-start; }
   .note { font-size: 17px; }
 }
+
+/* ---- 主人删除按钮 M4.5 ---- */
+.note { position: relative; }
+.note .del-x { position: absolute; top: 6px; right: 8px; min-width: 20px; height: 20px;
+  line-height: 20px; padding: 0 5px; border: none; border-radius: 10px;
+  background: rgba(0,0,0,.5); color: #fff; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .15s; z-index: 6; }
+.note:hover .del-x { opacity: .9; }
+.reply-strip { position: relative; }
+.reply-strip .del-x { top: 0; right: 0; transform: scale(.78); transform-origin: top right; }
+.reply-strip:hover .del-x { opacity: .9; }

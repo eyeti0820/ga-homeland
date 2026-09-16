@@ -58,6 +58,7 @@ function renderCard(p) {
   card.dataset.actor = p.actor_id;
   card.innerHTML = `
     <div class="m-head">
+      ${p.author_type === "master" ? `<button class="del-x" data-del-post="${p.id}" title="删除这条动态">×</button>` : ""}
       <div class="m-avatar">${esc((p.author_name || "?").slice(0, 1))}</div>
       <div class="m-who">
         <span class="m-name">${esc(p.author_name || "")}${p.author_type === "master" ? " 👑" : ""}</span>
@@ -118,6 +119,7 @@ function cmtNode(c, isFloor, parent = null) {
     ? `<span class="reply-to">回复 ${esc(parent.author_name)}：</span>` : "";
   div.innerHTML =
     `<span class="${whoCls}">${esc(c.author_name)}</span>${rep}${esc(c.content)}` +
+    (c.author_type === "master" ? `<button class="c-del" data-del-cmt="${c.id}" title="删除评论">删</button>` : "") +
     `<button class="c-reply" title="回复 TA">回复</button>`;
   return div;
 }
@@ -146,7 +148,24 @@ function wireCard(card, p) {
     const f = $(".m-form", card); f.hidden = !f.hidden;
     if (!f.hidden) { f.dataset.parent = ""; $("input", f).focus(); }
   };
-  card.addEventListener("click", (ev) => {
+  card.addEventListener("click", async (ev) => {
+    const dc = ev.target.closest("[data-del-cmt]");
+    if (dc) {
+      if (!confirm("删掉这条评论？（楼中楼一起）")) return;
+      try { await jsend(`/api/comments/${dc.dataset.delCmt}`, "DELETE", null); await refreshOne(p.id); }
+      catch (e) { alert("没删掉：" + e.message); }
+      return;
+    }
+    const dp = ev.target.closest("[data-del-post]");
+    if (dp) {
+      if (!confirm("删除这条动态？（评论和赞一起消失）")) return;
+      try {
+        await jsend(`/api/posts/${dp.dataset.delPost}`, "DELETE", null);
+        postsCache.delete(p.id); card.remove();
+        $("#feed-empty").style.display = postsCache.size ? "none" : "";
+      } catch (e) { alert("没删掉：" + e.message); }
+      return;
+    }
     const r = ev.target.closest(".c-reply"); if (!r) return;
     const node = r.closest(".m-cmt");
     const f = $(".m-form", card); f.hidden = false;

@@ -154,3 +154,11 @@ body { --page-accent: var(--cool); }   /* 日记页导航高亮=深灰绿 */
   --pg-accent: rgba(214,120,134,.5); --pg-accent-ink: #cc6f80; --pg-accent-glow: rgba(214,120,134,.12);
   --pg-edge: rgba(255,255,255,.55); --pg-shadow: 74,60,62;
 }
+
+/* ---- 主人删除按钮 M4.5 ---- */
+.diary-page, .diary-letter { position: relative; }
+.del-x { position: absolute; top: 6px; right: 8px; min-width: 20px; height: 20px;
+  line-height: 20px; padding: 0 5px; border: none; border-radius: 10px;
+  background: rgba(0,0,0,.5); color: #fff; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .15s; z-index: 5; }
+.diary-page:hover .del-x, .diary-letter:hover .del-x { opacity: .9; }

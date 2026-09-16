@@ -225,3 +225,31 @@ def unread_done(unread_id: int, conn=Depends(get_db)):
     if cur.rowcount == 0:
         raise HTTPException(404, f"unread {unread_id} 不存在或已非 pending")
     return {"id": unread_id, "status": "done"}
+
+# ---------------- 主人删除（M4.5: 只删主人自己发的内容）----------------
+def _master_guard(conn, actor_id: int):
+    row = conn.execute("SELECT type FROM actors WHERE id=?", (actor_id,)).fetchone()
+    if row is None or row["type"] != "master":
+        raise HTTPException(403, "仅主人可删除自己发的内容")
+
+
+@router.delete("/notes/{note_id}")
+def delete_note(note_id: int, conn=Depends(get_db)):
+    note = _note(conn, note_id)
+    _master_guard(conn, note["actor_id"])
+    conn.execute("DELETE FROM note_replies WHERE note_id=?", (note_id,))
+    conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
+    conn.commit()
+    return {"deleted": "note", "id": note_id}
+
+
+@router.delete("/note-replies/{reply_id}")
+def delete_note_reply(reply_id: int, conn=Depends(get_db)):
+    row = conn.execute("SELECT actor_id FROM note_replies WHERE id=?", (reply_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"reply {reply_id} not found")
+    _master_guard(conn, row["actor_id"])
+    conn.execute("DELETE FROM note_replies WHERE id=?", (reply_id,))
+    conn.execute("DELETE FROM unread_interactions WHERE kind='master_note_reply' AND ref_id=?", (reply_id,))
+    conn.commit()
+    return {"deleted": "note_reply", "id": reply_id}

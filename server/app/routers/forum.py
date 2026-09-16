@@ -165,3 +165,40 @@ def list_masks(actor_id: Optional[int] = None, conn=Depends(get_db)):
     sql += " ORDER BY m.id"
     rows = conn.execute(sql, params).fetchall()
     return {"count": len(rows), "items": [dict(r) for r in rows]}
+
+# ---------------- 主人删除（M4.5: 只删主人自己发的内容）----------------
+def _master_guard(conn, actor_id: int):
+    row = conn.execute("SELECT type FROM actors WHERE id=?", (actor_id,)).fetchone()
+    if row is None or row["type"] != "master":
+        raise HTTPException(403, "仅主人可删除自己发的内容")
+
+
+def _mask_owner(conn, mask_id: int):
+    row = conn.execute("SELECT actor_id FROM masks WHERE id=?", (mask_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"mask {mask_id} not found")
+    return row["actor_id"]
+
+
+@router.delete("/threads/{thread_id}")
+def delete_thread(thread_id: int, conn=Depends(get_db)):
+    th = conn.execute("SELECT author_mask_id FROM threads WHERE id=?", (thread_id,)).fetchone()
+    if th is None:
+        raise HTTPException(404, f"thread {thread_id} not found")
+    _master_guard(conn, _mask_owner(conn, th["author_mask_id"]))
+    conn.execute("DELETE FROM thread_posts WHERE thread_id=?", (thread_id,))
+    conn.execute("DELETE FROM threads WHERE id=?", (thread_id,))
+    conn.commit()
+    return {"deleted": "thread", "id": thread_id}
+
+
+@router.delete("/thread-posts/{post_id}")
+def delete_thread_post(post_id: int, conn=Depends(get_db)):
+    row = conn.execute("SELECT author_mask_id FROM thread_posts WHERE id=?", (post_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"post {post_id} not found")
+    _master_guard(conn, _mask_owner(conn, row["author_mask_id"]))
+    conn.execute("DELETE FROM thread_posts WHERE id=?", (post_id,))
+    conn.execute("DELETE FROM unread_interactions WHERE kind='master_reply' AND ref_id=?", (post_id,))
+    conn.commit()
+    return {"deleted": "thread_post", "id": post_id}

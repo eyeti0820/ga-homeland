@@ -211,3 +211,42 @@ def unlike_post(post_id: int, actor_id: int, conn=Depends(get_db)):
             "like_count": conn.execute(
                 "SELECT COUNT(*) AS n FROM likes WHERE post_id=?", (post_id,)
             ).fetchone()["n"]}
+
+# ---------------- 主人删除（M4.5: 只删主人自己发的内容）----------------
+def _master_guard(conn, actor_id: int):
+    row = conn.execute("SELECT type FROM actors WHERE id=?", (actor_id,)).fetchone()
+    if row is None or row["type"] != "master":
+        raise HTTPException(403, "仅主人可删除自己发的内容")
+
+
+@router.delete("/posts/{post_id}")
+def delete_post(post_id: int, conn=Depends(get_db)):
+    post = _post(conn, post_id)
+    _master_guard(conn, post["actor_id"])
+    for r in conn.execute("SELECT id FROM comments WHERE post_id=?", (post_id,)).fetchall():
+        conn.execute("DELETE FROM unread_interactions WHERE kind='master_comment' AND ref_id=?", (r["id"],))
+    conn.execute("DELETE FROM comments WHERE post_id=?", (post_id,))
+    conn.execute("DELETE FROM likes WHERE post_id=?", (post_id,))
+    conn.execute("DELETE FROM posts WHERE id=?", (post_id,))
+    conn.commit()
+    return {"deleted": "post", "id": post_id}
+
+
+@router.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, conn=Depends(get_db)):
+    row = conn.execute("SELECT actor_id FROM comments WHERE id=?", (comment_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, f"comment {comment_id} not found")
+    _master_guard(conn, row["actor_id"])
+    subtree, frontier = [comment_id], [comment_id]
+    while frontier:
+        qs = ",".join("?" * len(frontier))
+        frontier = [r["id"] for r in conn.execute(
+            "SELECT id FROM comments WHERE parent_id IN (" + qs + ")", frontier).fetchall()]
+        subtree += frontier
+    for cid in subtree:
+        conn.execute("DELETE FROM unread_interactions WHERE kind='master_comment' AND ref_id=?", (cid,))
+    qs = ",".join("?" * len(subtree))
+    conn.execute("DELETE FROM comments WHERE id IN (" + qs + ")", subtree)
+    conn.commit()
+    return {"deleted": "comment", "ids": subtree}

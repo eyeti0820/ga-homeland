@@ -100,7 +100,17 @@ async function loadThreads(key, list) {
     const sub = el("div", "f-t-sub");
     sub.appendChild(el("span", null, `${t.author} · ${ts(t.created_at)}`));
     sub.appendChild(el("span", null, `${t.reply_count} 回复 · ${t.views} 浏览`));
-    a.appendChild(sub);
+    if (t.author === MASTER_MASK) {
+    const dx = el("button", "f-del-x", "×"); dx.title = "删除这个主题";
+    dx.onclick = async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      if (!confirm("删除这个主题？（整栋楼一起塌）")) return;
+      try { await jdelForum(`/api/forum/threads/${t.id}`); a.remove(); }
+      catch (e) { alert("没删掉：" + e.message); }
+    };
+    a.appendChild(dx);
+  }
+  a.appendChild(sub);
     list.appendChild(a);
   }
   state.beforeId = d.threads.length ? d.threads[d.threads.length - 1].id : state.beforeId;
@@ -127,6 +137,15 @@ async function renderThread(id) {
   who.appendChild(document.createTextNode("楼主 "));
   who.appendChild(el("b", null, t.author));
   who.appendChild(document.createTextNode(` · ${ts(t.created_at)} · ${t.views} 浏览`));
+  if (t.author === MASTER_MASK) {
+    const dx = el("button", "f-del-x", "×"); dx.title = "删除这个主题";
+    dx.onclick = async () => {
+      if (!confirm("删除这个主题？（整栋楼一起塌）")) return;
+      try { await jdelForum(`/api/forum/threads/${t.id}`); location.hash = "#/"; }
+      catch (e) { alert("没删掉：" + e.message); }
+    };
+    who.appendChild(dx);
+  }
   op.append(h, who, el("div", "f-op-content", t.content));
 
   const floors = el("div");
@@ -136,6 +155,15 @@ async function renderThread(id) {
     w.appendChild(el("span", "f-fl-no", `${i + 1}楼`));
     w.appendChild(el("b", null, p.author));
     w.appendChild(document.createTextNode(` · ${ts(p.created_at)}`));
+    if (p.author === MASTER_MASK) {
+      const dx = el("button", "f-del-x", "×"); dx.title = "删除这层楼";
+      dx.onclick = async () => {
+        if (!confirm("删掉这层楼？")) return;
+        try { await jdelForum(`/api/forum/thread-posts/${p.id}`); renderThread(threadId); }
+        catch (e) { alert("没删掉：" + e.message); }
+      };
+      w.appendChild(dx);
+    }
     f.append(w, el("div", "f-fl-content", p.content));
     floors.appendChild(f);
   });
@@ -226,3 +254,10 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 route();
+
+
+/* ---------- 主人删除（M4.5） ---------- */
+async function jdelForum(url) {
+  const r = await fetch(url, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+}

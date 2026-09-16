@@ -42,6 +42,7 @@ function pageEl(e) {
       <b>${esc(e.author_name)}</b><span>的日记</span>
       <span>${fmtTime(e.created_at)}</span>
       ${e.mood ? `<span class="diary-mood">${esc(e.mood)}</span>` : ""}
+      ${masterId && e.actor_id === masterId ? `<button class="del-x" data-del-entry="${e.id}" title="撕掉这一页">×</button>` : ""}
     </div>
     <div class="diary-body">${esc(e.content)}</div>
     <div class="diary-letters" data-letters="${e.id}">${e.replies.map(letterHtml).join("")}</div>
@@ -60,6 +61,7 @@ function letterHtml(r) {
         <span class="avatar-dot d-${r.author_type === "master" ? "master" : slugOf(r.author_id)}">
           ${esc((r.author_name || "?").slice(0,1))}</span>
         <b>${esc(r.author_name)}</b><span>夹了一页回信 · ${fmtTime(r.created_at)}</span>
+        ${r.author_type === "master" ? `<button class="del-x" data-del-letter="${r.id}" title="收回这封回信">×</button>` : ""}
       </div>
       <div class="diary-letter-body">${esc(r.content)}</div>
     </div>`;
@@ -98,6 +100,20 @@ function wire() {
     if (ev.target.tagName === "TEXTAREA" && !ev.target.value.trim()) typing = false;
   });
   $("#diary-book").addEventListener("click", async (ev) => {
+    const dl = ev.target.closest("[data-del-letter]");
+    if (dl) {
+      if (!confirm("收回这封回信？")) return;
+      try { await jdelDiary(`/api/diary/replies/${dl.dataset.delLetter}`); dl.closest(".diary-letter").remove(); }
+      catch (e) { alert("没收回：" + e.message); }
+      return;
+    }
+    const de = ev.target.closest("[data-del-entry]");
+    if (de) {
+      if (!confirm("撕掉这一页日记？（回信一起消失）")) return;
+      try { await jdelDiary(`/api/diary/entries/${de.dataset.delEntry}`); de.closest(".diary-page").remove(); }
+      catch (e) { alert("没撕掉：" + e.message); }
+      return;
+    }
     const btn = ev.target.closest(".diary-send"); if (!btn) return;
     const form = btn.closest(".diary-letter-form"), ta = form.querySelector("textarea");
     const content = ta.value.trim();
@@ -143,3 +159,10 @@ async function poll() {
   await loadActor(CHARS.find((c) => c.id === want) || CHARS[0]);
   setInterval(poll, 15000);
 })();
+
+
+/* ---------- 主人删除（M4.5） ---------- */
+async function jdelDiary(url) {
+  const r = await fetch(url, { method: "DELETE" });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+}

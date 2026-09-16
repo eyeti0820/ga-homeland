@@ -182,3 +182,15 @@ body {
   .m-feed { padding: 14px 10px 40px; }
   .m-card { padding: 14px 14px 10px; }
 }
+
+/* ---- 主人删除按钮 M4.5 ---- */
+.m-card { position: relative; }
+.m-head .del-x { position: absolute; top: 8px; right: 10px; min-width: 20px; height: 20px;
+  line-height: 20px; padding: 0 5px; border: none; border-radius: 10px;
+  background: rgba(0,0,0,.45); color: #fff; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .15s; z-index: 5; }
+.m-card:hover .del-x { opacity: .9; }
+.m-cmt { position: relative; }
+.m-cmt .c-del { border: none; background: none; color: #b96; font-size: 11px;
+  cursor: pointer; margin-left: 6px; opacity: 0; transition: opacity .15s; }
+.m-cmt:hover .c-del { opacity: 1; }

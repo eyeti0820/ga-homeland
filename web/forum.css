@@ -192,3 +192,11 @@ body { --page-accent: #c05a5e; }   /* 论坛页 accent：暗红（标题+导航�
 .f-pass .f-err { color: #d98e8e; font-size: 12px; margin-top: 10px; min-height: 16px; }
 
 .sentinel { height: 2px; }
+
+/* ---- 主人删除按钮 M4.5 ---- */
+.f-thread, .f-floor, .f-op .f-fl-who { position: relative; }
+.f-del-x { position: absolute; top: 6px; right: 8px; min-width: 20px; height: 20px;
+  line-height: 20px; padding: 0 5px; border: none; border-radius: 10px;
+  background: rgba(0,0,0,.5); color: #fff; font-size: 12px; cursor: pointer;
+  opacity: 0; transition: opacity .15s; z-index: 5; }
+.f-thread:hover .f-del-x, .f-floor:hover .f-del-x, .f-op:hover .f-del-x { opacity: .9; }

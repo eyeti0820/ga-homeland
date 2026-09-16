@@ -54,7 +54,19 @@ def hours_since(ts):
     return (datetime.now() - dt).total_seconds() / 3600
 
 
-def build_prompt(persona, memory, char_cn, last_pages, master_replies):
+
+def lore_block(path):
+    """--lore-file 世界知识注入：文件存在则读入（供模板 {{lore}} 替换，位于 persona 之后）；未传/不存在返回空串，行为与原来完全一致。"""
+    if not path:
+        return ""
+    try:
+        t = open(path, encoding="utf-8").read().strip()
+    except FileNotFoundError:
+        print(f"[warn] --lore-file 不存在，忽略：{path}")
+        return ""
+    return f"\n【补充设定（世界知识参考）】\n{t}\n" if t else ""
+
+def build_prompt(persona, memory, char_cn, last_pages, master_replies, lore=""):
     mem = (f"\n{memory}\n" if memory else "")
     if last_pages:
         p = last_pages[0]
@@ -68,8 +80,9 @@ def build_prompt(persona, memory, char_cn, last_pages, master_replies):
         ctx += f"\n今晚翻开日记本，你读到了小墨的回信：\n{quoted}\n新的一页要自然地回应这封信——像真的翻到她的回信后提笔回应那样。\n"
     else:
         ctx += "\n今晚小墨没有新的回信，你就写平常的一页。\n"
+    lore_seg = (f"\n【补充设定（世界知识参考）】\n{lore}\n" if lore else "")
     return (
-        f"{persona}\n\n"
+        f"{persona}{lore_seg}\n"
         "——— 以下是「交换日记」场景 ———\n"
         "你和主人（她叫小墨，你的恋人）共有一本交换日记本，放在家里。"
         "你隔两三天会在深夜写一页：写日常、写心事、也会偷偷写下关于她的事。"
@@ -93,6 +106,7 @@ def main():
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     ap.add_argument("--force", action="store_true", help="无回信/间隔不足也强制写")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--lore-file", help="世界知识文件路径（persona 之后注入；不传则置空）")
     args = ap.parse_args()
 
     if args.actor not in CHAR_NAME:
@@ -123,7 +137,7 @@ def main():
     recall_key = (pages[0]["content"][:120] if pages else "") + " " + \
                  " ".join(r["content"] for r in pend)
     memory = char_config.recall(recall_key)
-    prompt = build_prompt(persona, memory, char_cn, pages, pend)
+    prompt = build_prompt(persona, memory, char_cn, pages, pend, lore_block(args.lore_file))
     if args.dry_run:
         print(prompt)
         return 0

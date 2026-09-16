@@ -117,9 +117,22 @@ def home_context(base):
     return "\n".join(lines) if lines else "（家园最近很安静）"
 
 
-def build_post_prompt(persona, recall_mem, few_shot, seed, ctx):
+
+def lore_block(path):
+    """--lore-file 世界知识注入：文件存在则读入（供模板 {{lore}} 替换，位于 persona 之后）；未传/不存在返回空串，行为与原来完全一致。"""
+    if not path:
+        return ""
+    try:
+        t = open(path, encoding="utf-8").read().strip()
+    except FileNotFoundError:
+        print(f"[warn] --lore-file 不存在，忽略：{path}")
+        return ""
+    return f"\n【补充设定（世界知识参考）】\n{t}\n" if t else ""
+
+def build_post_prompt(persona, recall_mem, few_shot, seed, ctx, lore=""):
     tpl = load_tpl("moment_post.md")
     return (tpl.replace("{{persona_self}}", persona[:3000])
+            .replace("{{lore}}", lore)
             .replace("{{recall_mem}}", recall_mem or "（无相关记忆）")
             .replace("{{few_shot_posts}}", few_shot or "你还没发过圈，这是第一条")
             .replace("{{seed_event}}", seed["event"])
@@ -139,7 +152,7 @@ def run_post(args, llmcore, char_config, persona):
     seed = {"event": seed["events"], "mood": seed["moods"], "scene": seed["scenes"]}
     few_shot = "\n".join(f"- {p['content'][:50]}" for p in recent[:2]) or None
     mem = char_config.recall(seed["event"])
-    prompt = build_post_prompt(persona, mem, few_shot, seed, home_context(base))
+    prompt = build_post_prompt(persona, mem, few_shot, seed, home_context(base), lore_block(args.lore_file))
 
     print(f"== 发圈任务：{CHAR_NAME[args.actor]} | 种子: {seed['event']} / {seed['mood']} / {seed['scene']}")
     if args.dry_run:
@@ -200,6 +213,7 @@ def run_interact(args, llmcore, char_config, persona):
             sess, _ = resolve_char_session(llmcore, args.ga_root, args.actor)
         mem = char_config.recall(master_c["content"])
         prompt = (tpl.replace("{{persona_self}}", persona[:3000])
+                  .replace("{{lore}}", lore_block(args.lore_file))
                   .replace("{{recall_mem}}", mem or "（无相关记忆）")
                   .replace("{{post_content}}", target["content"])
                   .replace("{{comments_thread}}", thread)
@@ -247,6 +261,7 @@ def run_cross(args, llmcore, char_config, persona):
     thread = "\n".join(f"{'  ' if c.get('parent_id') else ''}{c.get('author_name','?')}：{c['content']}"
                        for c in target.get("comments", []))
     prompt = (cross_tpl.replace("{{persona_self}}", persona[:3000])
+              .replace("{{lore}}", lore_block(args.lore_file))
               .replace("{{recall_mem}}", mem or "（无相关记忆）")
               .replace("{{other_name}}", CHAR_NAME[other])
               .replace("{{post_content}}", target["content"])
@@ -281,6 +296,7 @@ def main():
     ap.add_argument("--force", action="store_true", help="当日已发也强制发")
     ap.add_argument("--interact", action="store_true", help="回评主人模式")
     ap.add_argument("--cross", action="store_true", help="互评模式")
+    ap.add_argument("--lore-file", help="世界知识文件路径（注入模板 {{lore}}，位于 persona 之后；不传则置空）")
     args = ap.parse_args()
     if args.actor not in CHAR_NAME:
         raise SystemExit(f"未知角色 {args.actor}，可选：{'/'.join(CHAR_NAME)}")

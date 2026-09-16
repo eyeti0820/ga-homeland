@@ -135,11 +135,24 @@ def note_context(base, note_id):
     return n, convo
 
 
-def build_prompt(persona, memory, char_cn, convo, master_words):
+
+def lore_block(path):
+    """--lore-file 世界知识注入：文件存在则读入（供模板 {{lore}} 替换，位于 persona 之后）；未传/不存在返回空串，行为与原来完全一致。"""
+    if not path:
+        return ""
+    try:
+        t = open(path, encoding="utf-8").read().strip()
+    except FileNotFoundError:
+        print(f"[warn] --lore-file 不存在，忽略：{path}")
+        return ""
+    return f"\n【补充设定（世界知识参考）】\n{t}\n" if t else ""
+
+def build_prompt(persona, memory, char_cn, convo, master_words, lore=""):
     mem = (f"\n{memory}\n" if memory else "")
     tail = (f"\n小墨刚刚又补了一句：「{master_words}」，针对这句回应。\n" if master_words else "")
+    lore_seg = (f"\n【补充设定（世界知识参考）】\n{lore}\n" if lore else "")
     return (
-        f"{persona}\n\n"
+        f"{persona}{lore_seg}\n"
         "——— 以下是「家园便签墙」场景 ———\n"
         "你和主人（她叫小墨，你的恋人）住在一个数字家园里，家里有一面共享便签墙。"
         "现在轮到你回应墙上的留言。\n"
@@ -164,6 +177,7 @@ def main():
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     ap.add_argument("--limit", type=int, default=3)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--lore-file", help="世界知识文件路径（persona 之后注入；不传则置空）")
     args = ap.parse_args()
 
     if args.actor not in CHAR_NAME:
@@ -187,7 +201,7 @@ def main():
     for t in tasks:
         note, convo = note_context(args.api, t["note_id"])
         memory = char_config.recall(note["content"] + " " + t["master_words"])
-        prompt = build_prompt(persona, memory, char_cn, convo, t["master_words"])
+        prompt = build_prompt(persona, memory, char_cn, convo, t["master_words"], lore_block(args.lore_file))
         print(f"\n--- 便签 #{t['note_id']}（via {t['via']}） ---")
         if args.dry_run:
             print(prompt[:1200] + "\n…(dry-run 截断)")

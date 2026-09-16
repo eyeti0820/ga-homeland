@@ -270,6 +270,18 @@ def run_npc_reply(base, args, sess):
     return 1
 
 
+
+def lore_block(path):
+    """--lore-file 世界知识注入：文件存在则读入（供模板 {{lore}} 替换，位于 persona 之后）；未传/不存在返回空串，行为与原来完全一致。"""
+    if not path:
+        return ""
+    try:
+        t = open(path, encoding="utf-8").read().strip()
+    except FileNotFoundError:
+        print(f"[warn] --lore-file 不存在，忽略：{path}")
+        return ""
+    return f"\n【补充设定（世界知识参考）】\n{t}\n" if t else ""
+
 def run_cross(base, args):
     actor = args.cross
     cn = CHAR_NAME.get(actor, actor)
@@ -295,6 +307,7 @@ def run_cross(base, args):
         topic = random.choice(SEEDS["topics"].get(bkey, ["日常"]))
         tpl = _section(TPL_MASK, "## 一、马甲起楼模板")
         prompt = fill(guard, mask_name=mask_name) + "\n\n" + fill(tpl, persona_self=persona[:3000],
+                                       lore=lore_block(args.lore_file),
                                        recall_mem="", mask_name=mask_name,
                                        board_name=b["name"], board_desc=b["description"],
                                        recent_titles="\n".join(f"- {r}" for r in recents) or "（暂无）",
@@ -332,6 +345,7 @@ def run_cross(base, args):
         recall = ""
     tpl = _section(TPL_MASK, "## 二、马甲留言模板")
     prompt = fill(guard, mask_name=mask_name) + "\n\n" + fill(tpl, persona_self=persona[:3000],
+                                   lore=lore_block(args.lore_file),
                                    recall_mem=recall or "（无特别相关记忆）",
                                    mask_name=mask_name, thread_title=th.get("title", "?"),
                                    board_name=b["name"],
@@ -393,6 +407,7 @@ def main():
     ap.add_argument("--thread", type=int, help="指定帖 ID")
     ap.add_argument("--count", type=int, help="NPC 起楼数")
     ap.add_argument("--dry-run", action="store_true", help="只打印 prompt，不调模型不写库")
+    ap.add_argument("--lore-file", help="世界知识文件路径（注入模板 {{lore}}，位于 persona 之后；不传则置空）")
     ap.add_argument("--base", default="http://127.0.0.1:7842")
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     args = ap.parse_args()

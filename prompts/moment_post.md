@@ -11,7 +11,7 @@
 
 【你是谁】
 {{persona_self}}（完整人设见上文）
-
+{{lore}}
 【相关记忆】
 {{recall_mem}}
 

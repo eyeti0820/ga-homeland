@@ -96,6 +96,11 @@ function noteEl(n, fresh) {
   const slug = slugOf(n);
   const el = document.createElement("article");
   el.className = `note k-${n.color || "butter"} by-${n.author_type}` + (fresh ? " fresh" : "");
+  if (fresh) {
+    const undrop = () => el.classList.remove("fresh"); // 播完摘掉，防止后续任何搬动重播闪烁
+    el.addEventListener("animationend", undrop, { once: true });
+    setTimeout(undrop, 900); // 兜底：动画被打断/禁用时也能摘
+  }
   el.dataset.id = n.id;
   el.dataset.rs = rSig(n);
   el.style.setProperty("--tilt", `${tiltOf(n.id)}deg`);
@@ -133,10 +138,13 @@ function layoutWall() {
   const cols = [...wall.querySelectorAll(".col")];
   while (cols.length > colNum) cols.pop().remove();
   const heights = new Array(cols.length).fill(0);
+  const placed = new Array(cols.length).fill(0);
   for (const el of els) {
     let k = 0;
     for (let i = 1; i < heights.length; i++) if (heights[i] < heights[k]) k = i;
-    cols[k].appendChild(el); // move
+    // 已在目标列的目标槽位就不搬动：无谓的 move 会重播 drop-in 动画（闪烁）并扰动滚动锚定（跳顶）
+    if (el.parentNode !== cols[k] || cols[k].children[placed[k]] !== el) cols[k].appendChild(el);
+    placed[k] += 1;
     heights[k] += el.offsetHeight + GAP;
   }
 }
@@ -155,9 +163,11 @@ function syncNotes(notes) {
     if (n.id < oldestId) oldestId = n.id;
   });
   const alive = new Set(notes.map((n) => n.id));
+  const winOldest = notes.length ? Math.min(...notes.map((n) => n.id)) : 0;
   wall.querySelectorAll(".note").forEach((el) => {
     const id = +el.dataset.id;
-    if (!alive.has(id)) { el.remove(); lastSeenIds.delete(id); }
+    // 只清"本窗口应覆盖却消失"的（真被删了）；比窗口更老的是分页加载的，不归轮询管，删了墙会塌=跳顶
+    if (!alive.has(id) && id > winOldest) { el.remove(); lastSeenIds.delete(id); }
   });
   renderMeta();
   layoutWall();

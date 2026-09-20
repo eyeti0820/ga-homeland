@@ -209,12 +209,19 @@ def run_interact(args, llmcore, char_config, persona):
         thread = "\n".join(
             f"{'  ' if c.get('parent_id') else ''}{c.get('author_name', '?')}：{c['content']}"
             for c in target["comments"])
+        _on = target.get("author_name") or "对方"
+        own_post = target.get("author_name") == CHAR_NAME.get(args.actor)
+        if own_post:
+            own_label = "【你发的朋友圈】"
+        else:
+            own_label = f"【{_on} 发的圈】（注意：这是{_on}的圈，不是你的；主人这条评论默认是对{_on}说的）"
         if sess is None:
             sess, _ = resolve_char_session(llmcore, args.ga_root, args.actor)
         mem = char_config.recall(master_c["content"])
         prompt = (tpl.replace("{{persona_self}}", persona[:3000])
                   .replace("{{lore}}", lore_block(args.lore_file))
                   .replace("{{recall_mem}}", mem or "（无相关记忆）")
+                  .replace("{{post_ownership}}", own_label)
                   .replace("{{post_content}}", target["content"])
                   .replace("{{comments_thread}}", thread)
                   .replace("{{master_comment}}", f"{master_c.get('author_name', '主人')}：{master_c['content']}")
@@ -233,7 +240,7 @@ def run_interact(args, llmcore, char_config, persona):
         print(f"[ok] 已回评：{content}")
         from homeland_ingest import homeland_ingest
         homeland_ingest(char_config, "moment_reply", "朋友圈回评",
-                        f"主人评论我的动态「{target['content'][:40]}」说：{master_c['content'][:60]}，我回复", content)
+                        f"主人评论{'我' if own_post else _on}的动态「{target['content'][:40]}」说：{master_c['content'][:60]}，我回复", content)
     return 0
 
 

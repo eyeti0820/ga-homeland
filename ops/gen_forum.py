@@ -206,7 +206,8 @@ def run_npc_thread(base, args, sess):
         prompt = fill(tpl, persona_npc=f"{npc['name']}：{npc['persona']}",
                       board_name=b["name"], board_desc=b["description"],
                       recent_titles="\n".join(f"- {r}" for r in recents) or "（暂无）",
-                      topic=topic, tone=tone)
+                      topic=topic, tone=tone,
+                      lore=lore_block(args.lore_file))
         if args.dry_run:
             print(f"\n=== [dry] NPC={npc['name']} board={board_key} topic={topic} tone={tone} ===")
             print(prompt[:1500] + ("\n...<截断>" if len(prompt) > 1500 else ""))
@@ -218,7 +219,7 @@ def run_npc_thread(base, args, sess):
             continue
         if title_too_similar(payload["title"], recents):
             topic2 = random.choice([t for t in SEEDS["topics"].get(board_key, []) if t != topic])
-            payload2 = ask_json(sess, fill(tpl, persona_npc=f"{npc['name']}：{npc['persona']}",
+            payload2 = ask_json(sess, fill(tpl, lore=lore_block(args.lore_file), persona_npc=f"{npc['name']}：{npc['persona']}",
                                            board_name=b["name"], board_desc=b["description"],
                                            recent_titles="\n".join(f"- {r}" for r in recents),
                                            topic=topic2, tone=random.choice(SEEDS["tones"])),
@@ -255,7 +256,8 @@ def run_npc_reply(base, args, sess):
                   thread_title=detail.get("thread", {}).get("title", "?"),
                   board_name=b["name"], thread_author=op_author,
                   thread_op=detail.get("thread", {}).get("content", "")[:600],
-                  floors=floors_text(detail))
+                  floors=floors_text(detail),
+                  lore=lore_block(args.lore_file))
     if args.dry_run:
         print(f"\n=== [dry] NPC-reply={npc['name']} thread={tid} ===")
         print(prompt[:1500])
@@ -380,7 +382,8 @@ def run_editor(base, args, sess):
     topic = random.choice(SEEDS["topics"]["city"] + ["编辑部收到的奇怪来稿", "深夜电台点歌箱"])
     tpl = _section(TPL_NPC, "## 三、小梅主编运营模板")
     prompt = fill(tpl, editor_kind=kind,
-                  recent_titles="\n".join(f"- {r}" for r in recents) or "（暂无）", topic=topic)
+                  recent_titles="\n".join(f"- {r}" for r in recents) or "（暂无）", topic=topic,
+                  lore=lore_block(args.lore_file))
     if args.dry_run:
         print(f"\n=== [dry] editor kind={kind} topic={topic} ===")
         print(prompt[:1500])

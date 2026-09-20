@@ -287,6 +287,55 @@ def run_cross(args, llmcore, char_config, persona):
     return 0
 
 
+def run_npc_comment(args, llmcore, char_config):
+    """剧情NPC（seeds/story_npcs.json）评论关联角色的朋友圈。"""
+    base, aid = args.api, args.actor_id
+    story = json.load(open(os.path.join(ROOT, "seeds", "story_npcs.json"), encoding="utf-8"))
+    pool = [n for n in story["npcs"] if n.get("tie") == args.actor]
+    if not pool:
+        print(f"[skip] 没有关联 {CHAR_NAME[args.actor]} 的剧情NPC"); return 0
+    posts = api(base, "GET", "/api/posts?limit=15")
+    posts = posts.get("posts") if isinstance(posts, dict) else posts
+    mine = [p for p in posts if p["actor_id"] == aid]
+    if not mine:
+        print(f"[skip] {CHAR_NAME[args.actor]} 还没有朋友圈"); return 0
+    target = random.choice(mine[:3])
+    cands = [n for n in pool if not any(
+        c.get("actor_id") == n["actor_id"] for c in target.get("comments", []))]
+    if not cands:
+        print(f"[skip] {CHAR_NAME[args.actor]} 的圈 {target['id']} 已被全部关联NPC评过"); return 0
+    npc = random.choice(cands)
+    if not args.force and random.random() > 0.75:
+        print(f"[skip] {npc['name']} 本次掷骰未出勤（--force 可强制）"); return 0
+    tpl = load_tpl("moment_npc_comment.md")
+    thread = "\n".join(f"{'  ' if c.get('parent_id') else ''}{c.get('author_name','?')}：{c['content']}"
+                       for c in target.get("comments", []))
+    display = npc.get("display_name") or npc["name"]
+    prompt = (tpl.replace("{{npc_name}}", display)
+              .replace("{{npc_persona}}", npc["persona"])
+              .replace("{{npc_style}}", npc.get("style", ""))
+              .replace("{{host_name}}", CHAR_NAME[args.actor])
+              .replace("{{post_content}}", target["content"])
+              .replace("{{comments_thread}}", thread or "（还没有人评论）")
+              .replace("{{home_context}}", home_context(base)))
+    print(f"== NPC评论任务：{display} → {CHAR_NAME[args.actor]} 的圈：{target['content'][:30]}")
+    if args.dry_run:
+        print(prompt); return 0
+    sess, _ = resolve_char_session(llmcore, args.ga_root, "GLM")
+    body = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+    content = (parse_json_loose(body).get("content") or "").strip()
+    if not content:
+        print(f"[fail] 解析为空：{body[:120]}"); return 0
+    api(base, "POST", f"/api/posts/{target['id']}/comments", {
+        "actor_id": npc["actor_id"], "content": content, "parent_id": None,
+        "gen_task_id": f"npc:{npc['name']}:{target['id']}"})
+    print(f"[ok] {display} 已评论：{content}")
+    from homeland_ingest import homeland_ingest
+    homeland_ingest(char_config, "moment_npc_comment", "朋友圈NPC评论",
+                    f"{display}评论了我的朋友圈「{target['content'][:40]}」", content)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--actor", default="xiazhou")
@@ -296,6 +345,7 @@ def main():
     ap.add_argument("--force", action="store_true", help="当日已发也强制发")
     ap.add_argument("--interact", action="store_true", help="回评主人模式")
     ap.add_argument("--cross", action="store_true", help="互评模式")
+    ap.add_argument("--npc-comment", action="store_true", help="剧情NPC评论模式")
     ap.add_argument("--lore-file", help="世界知识文件路径（注入模板 {{lore}}，位于 persona 之后；不传则置空）")
     args = ap.parse_args()
     if args.actor not in CHAR_NAME:
@@ -306,6 +356,8 @@ def main():
         return run_interact(args, llmcore, char_config, persona)
     if args.cross:
         return run_cross(args, llmcore, char_config, persona)
+    if args.npc_comment:
+        return run_npc_comment(args, llmcore, char_config)
     return run_post(args, llmcore, char_config, persona)
 
 

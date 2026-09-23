@@ -238,17 +238,34 @@ def run_npc_thread(base, args, sess):
 
 
 def run_npc_reply(base, args, sess):
-    items = [t for t in recent_threads(base) if t.get("id") != args.thread or not args.thread]
+    # --npc=NAME 可指定回帖人（楼主马甲追更自己的帖）；不给则随机
+    name = getattr(args, "reply_npc_name", None)
+    if name:
+        pool = [n for n in SEEDS["npcs"] if n["name"] == name]
+        if not pool:
+            print(f"[skip] 未找到 NPC：{name}")
+            return 0
+        npc = pool[0]
+    else:
+        npc = random.choice(SEEDS["npcs"])
     if args.thread:
         tid = args.thread
     else:
+        items = [t for t in recent_threads(base) if not t.get("is_pinned")]
+        if npc.get("home"):
+            _, bid_of = boards_index(base)
+            home_ids = {bid_of[h] for h in npc["home"] if h in bid_of}
+            home_items = [t for t in items if t.get("board_id") in home_ids]
+            if home_items:
+                items = home_items
         if not items:
             print("[skip] 全站无帖可回")
             return 0
-        tid = random.choice(items)["id"]
+        # 冷帖优先：楼最少的先救，同楼数里偏新
+        cold = sorted(items, key=lambda t: (t.get("reply_count", 0), -t.get("id", 0)))
+        tid = random.choice(cold[:5])["id"]
     detail = thread_detail(base, tid)
     op_author = detail.get("thread", {}).get("author") or detail.get("author") or "?"
-    npc = random.choice(SEEDS["npcs"])
     bkey = detail.get("thread", {}).get("board_key") or detail.get("board_key") or "city"
     b = BOARD_MAP.get(bkey, BOARD_MAP["city"])
     tpl = _section(TPL_NPC, "## 二、NPC 续楼模板")
@@ -414,6 +431,12 @@ def main():
     ap.add_argument("--base", default="http://127.0.0.1:7842")
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     args = ap.parse_args()
+
+    # --npc-reply 模式下 --npc=NAME 语义改为"指定回帖人"（楼主马甲追更自己的帖），不算第二个模式
+    args.reply_npc_name = None
+    if args.npc_reply and isinstance(args.npc, str):
+        args.reply_npc_name = args.npc
+        args.npc = None
 
     modes = sum(bool(x) for x in (args.npc, args.npc_reply, args.cross, args.editor))
     if modes != 1:

@@ -131,7 +131,7 @@ async function renderDetail(sid) {
   lazy.forEach(([cid, card]) => {
     jget(`${API}/${sid}/chapters/${cid}`).then(full => {
       const t = card.querySelector(".ch-text");
-      if (t) t.textContent = full.content || "（本章内容为空）";
+      if (t) t.textContent = (full.content || "（本章内容为空）").replace(/\\n/g, "\n");
       if (full.summary && t) t.after(el("div", "ch-sum", "本章梗概：" + esc(full.summary)));
     }).catch(() => { const t = card.querySelector(".ch-text"); if (t) t.textContent = "（加载失败，刷新试试）"; });
   });

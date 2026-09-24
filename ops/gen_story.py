@@ -68,6 +68,13 @@ def parse_json_out(raw: str):
     return None
 
 
+
+def _denorm(s):
+    """模型偶发把换行双转义成字面 \\n 串(json.loads 后仍是两个字符), 统一还原为真换行。"""
+    if isinstance(s, str) and "\\n" in s:
+        s = s.replace("\\r\\n", "\n").replace("\\n", "\n")
+    return s
+
 def bible_block(bible: dict) -> str:
     if not bible:
         return "（故事刚开始，圣经为空：你是第一位执笔者）"
@@ -178,8 +185,9 @@ def main():
         head = ((out.get("content") or "") if isinstance(out, dict) else raw)[:300]
         raise SystemExit(f"[gen_story] 模型输出不合格（content<300字或解析失败）。头300字：\n{head}")
 
-    title = (out.get("title") or f"第{idx}章").strip()[:60]
-    content, summary = out["content"].strip(), (out.get("summary") or content[:120]).strip()
+    title = _denorm(out.get("title") or f"第{idx}章").strip()[:60]
+    content = _denorm(out["content"]).strip()
+    summary = _denorm(out.get("summary") or content[:120]).strip()
     chapter = api(args.api, "POST", f"/api/stories/{sid}/chapters", {
         "kind": "chapter", "author_slug": args.actor, "title": title,
         "content": content, "summary": summary,
@@ -187,13 +195,13 @@ def main():
 
     delta = out.get("bible_delta") or {}
     bible.setdefault("chronicle", [])
-    bible["chronicle"] = (bible["chronicle"] + [str(x) for x in delta.get("chronicle", [])])[-BIBLE_CHRONICLE_CAP:]
+    bible["chronicle"] = (bible["chronicle"] + [_denorm(str(x)) for x in delta.get("chronicle", [])])[-BIBLE_CHRONICLE_CAP:]
     if delta.get("relations"):
         bible["relations"] = str(delta["relations"])
     if isinstance(delta.get("foreshadow"), list):
-        bible["foreshadow"] = [str(x) for x in delta["foreshadow"]]
+        bible["foreshadow"] = [_denorm(str(x)) for x in delta["foreshadow"]]
     if delta.get("current_scene"):
-        bible["current_scene"] = str(delta["current_scene"])
+        bible["current_scene"] = _denorm(str(delta["current_scene"]))
     api(args.api, "PATCH", f"/api/stories/{sid}", {"bible": json.dumps(bible, ensure_ascii=False)})
 
     for n in notes:

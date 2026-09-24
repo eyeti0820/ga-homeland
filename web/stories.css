@@ -76,7 +76,7 @@
 .chap .ch-title { font-size: 15.5px; letter-spacing:.03em; }
 .chap .ch-no { font-size: 11px; color: var(--ink-soft); letter-spacing:.15em; margin-right: 8px; }
 .chap .ch-time { font-size: 11px; color: var(--ink-soft); letter-spacing:.04em; }
-.chap .ch-text { font-size: 14.5px; line-height: 2; white-space: pre-wrap; }
+.chap .ch-text { font-size: 16.5px; line-height: 2; white-space: pre-wrap; }
 .chap .ch-sum { margin-top: 10px; font-size: 12px; color: var(--ink-soft);
   padding: 8px 12px; border-left: 3px solid rgba(94,128,120,.35); background: rgba(94,128,120,.06);
   border-radius: 0 8px 8px 0; line-height: 1.7; }
@@ -85,12 +85,12 @@
   border: 1px dashed rgba(201,123,90,.45); border-radius: 14px;
   box-shadow: 0 4px 14px rgba(var(--shade),.06); }
 .chap.note::before { background: var(--c-butter); box-shadow: 0 0 0 4px rgba(247,221,176,.25); }
-.chap.note .ch-text { font-size: 13.5px; line-height: 1.9; }
+.chap.note .ch-text { font-size: 15px; line-height: 1.9; }
 
 .chap.seg { padding: 16px 20px; background: rgba(94,128,120,.10);
   border: 1px solid rgba(94,128,120,.28); }
 .chap.seg::before { background: var(--cool); box-shadow: 0 0 0 4px rgba(94,128,120,.15); }
-.chap.seg .ch-text { font-size: 14px; line-height: 2; }
+.chap.seg .ch-text { font-size: 16px; line-height: 2; }
 
 /* ---------- 导演操作台 ---------- */
 .director { padding: 18px 20px; margin-top: 22px; }

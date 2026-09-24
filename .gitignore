@@ -30,3 +30,9 @@ progress*.md
 task_plan_*.md
 开发方案_*.md
 next_session_handoff_prompt.md
+
+# 备份垃圾不入库
+*.bak-*
+*.bak_*.db
+*.db.bak*
+*.db.bak_*

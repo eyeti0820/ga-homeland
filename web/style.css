@@ -48,10 +48,13 @@ body {
 /* ---------- 共享 App Shell：四页统一页头 / 导航 / 页脚 ---------- */
 /* 每页用 --page-accent 定自己的点缀色（便签墙默认陶土橘） */
 .app-head {
-  position: relative; z-index: 1;
+  position: sticky; top: 0; z-index: 4;
   display: flex; align-items: flex-end; justify-content: space-between;
   flex-wrap: wrap; gap: 10px 18px;
   padding: 30px clamp(18px, 5vw, 64px) 12px;
+  background: rgba(245,242,236,.88);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(var(--shade),.08);
 }
 .app-title {
   font-size: clamp(26px, 4vw, 38px);
@@ -270,7 +273,7 @@ body {
 .note.k-lavender   { background-color: var(--c-lavender); }
 
 @media (max-width: 640px) {
-  .app-head { flex-direction: column; align-items: flex-start; }
+  .app-head { flex-direction: column; align-items: flex-start; padding: 14px 18px 10px; }
   .app-aside { justify-content: flex-start; }
   .note { font-size: 17px; }
 }

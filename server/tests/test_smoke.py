@@ -19,7 +19,7 @@ from app import config  # noqa: E402
 
 PORT = 7899  # 冒烟专用口，避开正式 7842
 BASE = f"http://127.0.0.1:{PORT}"
-EXPECTED_TABLES = 14  # 开发方案 §6 + diary 两表
+EXPECTED_TABLES = 16  # 开发方案 §6 + diary 两表 + 我们的故事 stories/chapters 两表
 
 
 def get(path: str):
@@ -248,7 +248,7 @@ def main() -> int:
             assert status == 200 and fb["count"] == 6, fb
             assert next(b for b in fb["items"] if b["key"] == "darkspot")["access"] == "secret", fb
             status, masks = get("/api/forum/masks")
-            assert status == 200 and masks["count"] == 31, masks  # 7 actors + 24 NPC
+            assert status == 200 and masks["count"] == 49, masks  # 7 actors + 42 NPC(论坛运营持续扩充,基线随seed更新)
             npc_mask = next(m for m in masks["items"] if m["actor_type"] == "npc")
             char_mask = next(m for m in masks["items"] if m["actor_name"] == "夏以昼")
             mei_mask = next(m for m in masks["items"] if m["actor_type"] == "mephisto")
@@ -299,7 +299,7 @@ def main() -> int:
             print(f"SMOKE OK: health(tables={EXPECTED_TABLES}) / actors(7+幂等) / "
                   f"notes CRUD / replies / unread pending→done / pending-reply / "
                   f"diary 页+回信+unread流转 / moments 发圈+评论+楼中楼+unread+点赞+游标 / "
-                  f"forum 六板+马甲31+置顶权限+楼层+游标+隐私 / static 全过")
+                  f"forum 六板+马甲49+置顶权限+楼层+游标+隐私 / static 全过")
             return 0
         finally:
             proc.terminate()

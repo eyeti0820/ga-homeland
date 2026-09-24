@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import config, db as dbm
-from .routers import actors, diary, forum, genlog, health, notes, moments
+from .routers import actors, diary, forum, genlog, health, notes, moments, stories
 
 APP_NAME = "GA家园系统"
 
@@ -25,6 +25,7 @@ def create_app(db_path=None) -> FastAPI:
     app.include_router(moments.router)
     app.include_router(genlog.router)
     app.include_router(forum.router)
+    app.include_router(stories.router)
 
     # 静态便签墙（M1 纯静态；React+Vite 到 M3 再评估）
     from pathlib import Path

@@ -143,3 +143,33 @@ CREATE INDEX IF NOT EXISTS idx_diary_replies    ON diary_replies(entry_id, creat
 CREATE INDEX IF NOT EXISTS idx_threads_board    ON threads(board_id, is_pinned DESC, created_at);
 CREATE INDEX IF NOT EXISTS idx_genlog_hash      ON gen_log(content_hash, created_at);
 CREATE INDEX IF NOT EXISTS idx_unread_status    ON unread_interactions(status, actor_id);
+
+-- ===== 我们的故事 · 小说版块（我们的故事，2026-09-24）=====
+CREATE TABLE IF NOT EXISTS stories (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  title         TEXT NOT NULL,
+  background    TEXT NOT NULL DEFAULT '',     -- 世界观/IF 覆盖设定（主人写）
+  user_identity TEXT NOT NULL DEFAULT '',     -- user 在故事内的身份 + 与角色的关系起点
+  cast_json     TEXT NOT NULL DEFAULT '[]',   -- 参与续写的角色 slug 数组
+  style_json    TEXT NOT NULL DEFAULT '{}',   -- 文风参数：tone/min_words/max_words/heat 等
+  bible         TEXT,                          -- 故事圣经 JSON：events/relations/foreshadow/scene
+  bible_updated_at TEXT,
+  enabled       INTEGER NOT NULL DEFAULT 0,   -- 今日开关：排班只续写 enabled=1 的故事
+  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS story_chapters (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  story_id    INTEGER NOT NULL REFERENCES stories(id),
+  idx         INTEGER NOT NULL,               -- 章序；chapter/master_seg 占号，master_note 不占
+  kind        TEXT NOT NULL CHECK (kind IN ('chapter','master_note','master_seg')),
+  author_slug TEXT,                            -- chapter=执笔角色 slug；master_*= NULL
+  title       TEXT,                            -- 章节标题（角色自拟）
+  content     TEXT NOT NULL,
+  summary     TEXT,                            -- 章摘要（滚动窗口前章用；master_note 无）
+  consumed    INTEGER NOT NULL DEFAULT 0,     -- master_note: 是否已注入过续写 prompt
+  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  UNIQUE(story_id, idx, kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_story_chapters ON story_chapters(story_id, kind, idx);

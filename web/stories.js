@@ -137,6 +137,10 @@ async function renderDetail(sid) {
   });
   view.appendChild(tl);
 
+  /* 打开即定位最新章（方案一：自动滚到底部最新章，不倒序） */
+  const lastChap = tl.querySelector(".chap:last-of-type");
+  if (lastChap) setTimeout(() => { lastChap.scrollIntoView({ block: "start" }); window.scrollBy(0, -70); }, 60);
+
   /* 导演操作台 */
   const dir = el("section", "director glass");
   dir.appendChild(el("h3", null, "导演操作台"));

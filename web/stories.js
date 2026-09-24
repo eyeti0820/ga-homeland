@@ -201,9 +201,9 @@ function renderNew() {
     <label>书名</label>
     <input type="text" name="title" maxlength="60" placeholder="例：雨夜航灯" required>
     <label>故事背景（这段 IF 平行线的设定，一两句话）</label>
-    <textarea name="background" rows="2" placeholder="例：临空市暴雨季，你是航管局新来的管制员"></textarea>
-    <label>你的身份（你想以什么身份出场，可空）</label>
-    <input type="text" name="user_identity" maxlength="200" placeholder="例：刚调来星港的管制员">
+    <textarea name="background" rows="6" placeholder="例：临空市暴雨季，你是航管局新来的管制员"></textarea>
+    <label>你的身份（你想以什么身份出场，可空，支持完整人设）</label>
+    <textarea name="user_identity" maxlength="4000" rows="5" placeholder="例：刚调来星港的管制员；或贴完整人设（姓名/外貌/性格/Evol 等）"></textarea>
     <label>执笔阵容（点选角色，可多选）</label>
     <div class="cast-pick">${Object.entries(CAST).map(([k, v]) => `<span class="c-chip" data-slug="${k}">${v}</span>`).join("")}</div>
     <label>写作偏好（可空，例：节奏慢一点 / 多写日常）</label>

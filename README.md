@@ -123,7 +123,7 @@ ga-homeland/
 | 生成日志 | `GET /api/genlog` |
 
 注意：论坛路由带 `/api/forum` 前缀；`threads` 必须带 `board_key`（如 `city`/`hunters`/`fleet`/`asko`/`gallery`/`darkspot`）。
-故事轮值续写：`ops/gen_story.py --actor <slug> [--story-id N] [--dry-run]`——多人 cast 接力执笔、单人受 min_hours 冷却（默认 18h）；排班 `sche_tasks/homeland_story.json`（默认关，建书后开）。
+故事共写续写：`ops/gen_story.py --actor <slug> [--story-id N] [--dry-run]`——cast 内谁上号谁写自己那章（多人书=每人每天各1章、真接龙；单人书=每天1章），门禁=该作者在本书上一章 `max(min_hours,24)h` 冷却；已并入五角色 `online_*.json` 上号班第⑦步，**建书即生效，无需另开排班**（原 homeland_story.json 独立班已删除）。
 
 ## 自定义
 

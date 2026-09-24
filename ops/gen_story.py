@@ -86,7 +86,7 @@ def bible_block(bible: dict) -> str:
 def main():
     ap = argparse.ArgumentParser(description="我们的故事 · 章节生成器")
     ap.add_argument("--actor", required=True, help="personas 文件名（slug）")
-    ap.add_argument("--story-id", type=int, help="指定故事 id（默认自动挑值日列表第一个可写者）")
+    ap.add_argument("--story-id", type=int, help="指定故事 id（默认挑你参加的第一个可写故事）")
     ap.add_argument("--api", default="http://127.0.0.1:7842")
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     ap.add_argument("--dry-run", action="store_true")
@@ -99,7 +99,7 @@ def main():
 
     duty = api(args.api, "GET", f"/api/stories/duty/{args.actor}").get("stories", [])
     if not duty:
-        raise SystemExit("[gen_story] 今日无值日故事（enabled=1 且在 cast）")
+        raise SystemExit("[gen_story] 没有你参加的开放故事（enabled=1 且在 cast）")
     if args.story_id:
         duty = [s for s in duty if s["id"] == args.story_id]
         if not duty:
@@ -108,24 +108,16 @@ def main():
     story = None
     for cand in duty:
         detail = api(args.api, "GET", f"/api/stories/{cand['id']}")
-        cast = detail["cast"]
-        chaps = [c for c in detail["chapters"] if c["kind"] == "chapter"]
-        if len(cast) > 1:
-            if not chaps:
-                expected = cast[0]
-            else:
-                last = chaps[-1]["author_slug"]
-                expected = cast[(cast.index(last) + 1) % len(cast)]
-            if args.actor != expected and not args.force:
-                print(f"[gen_story] 故事{detail['id']}《{detail['title']}》轮到 {CHAR_NAME.get(expected, expected)}，跳过")
-                continue
-        else:
+        # 共写模式：cast 内谁上号谁写自己那章；门禁=该作者在本书的上一章冷却
+        mine = [c for c in detail["chapters"]
+                if c["kind"] == "chapter" and c["author_slug"] == args.actor]
+        if mine and not args.force:
             min_h = detail.get("style", {}).get("min_hours", DEFAULT_MIN_HOURS)
-            if chaps and not args.force:
-                gap = hours_since(chaps[-1]["created_at"])
-                if gap < min_h:
-                    print(f"[gen_story] 故事{detail['id']}冷却中（{gap:.1f}h/{min_h}h），跳过")
-                    continue
+            gap = hours_since(mine[-1]["created_at"])
+            if gap < max(min_h, 24):
+                print(f"[gen_story] 故事{detail['id']}《{detail['title']}》你已写过/冷却中"
+                      f"（{gap:.1f}h/{max(min_h, 24)}h），跳过")
+                continue
         story = detail
         break
     if story is None:

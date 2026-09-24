@@ -128,13 +128,22 @@ async function renderDetail(sid) {
     lazy.push([c.id, a]);
     tl.appendChild(a);
   }
-  lazy.forEach(([cid, card]) => {
+  /* 真懒加载：滚到视口附近（前后~1200px缓冲）才拉正文；拉过的不再拉 */
+  const fillChap = (cid, card) => {
     jget(`${API}/${sid}/chapters/${cid}`).then(full => {
       const t = card.querySelector(".ch-text");
       if (t) t.textContent = (full.content || "（本章内容为空）").replace(/\\n/g, "\n");
       if (full.summary && t) t.after(el("div", "ch-sum", "本章梗概：" + esc(full.summary)));
     }).catch(() => { const t = card.querySelector(".ch-text"); if (t) t.textContent = "（加载失败，刷新试试）"; });
-  });
+  };
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver(es => {
+      for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); fillChap(e.target.dataset.cid, e.target); }
+    }, { rootMargin: "1200px 0px" });
+    for (const [cid, card] of lazy) { card.dataset.cid = cid; io.observe(card); }
+  } else {
+    lazy.forEach(([cid, card]) => fillChap(cid, card));   // 老浏览器回退：全量
+  }
   view.appendChild(tl);
 
   /* 打开即定位最新章（方案一：自动滚到底部最新章，不倒序） */

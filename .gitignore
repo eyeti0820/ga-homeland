@@ -36,3 +36,6 @@ next_session_handoff_prompt.md
 *.bak_*.db
 *.db.bak*
 *.db.bak_*
+
+# 发圈种子已用状态(运行时,勿提交)
+seeds/moments_seeds_used.json

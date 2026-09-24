@@ -30,6 +30,8 @@ from gen_note_reply import setup_ga, resolve_char_session, api, CHAR_NAME  # noq
 
 DEFAULT_GA_ROOT = "/Users/potato/Library/Application Support/GenericAgent/runtime/app"
 SEEDS = json.load(open(os.path.join(ROOT, "seeds", "moments_seeds.json"), encoding="utf-8"))
+SEEDS_USED_PATH = os.path.join(ROOT, "seeds", "moments_seeds_used.json")
+SEED_REUSE_WINDOW = 10  # 最近用过的N个事件种子不再抽（防同一事件反复发圈）
 
 # 角色关系提示（互评用，简化版；后续可挪进 seeds）
 RELATION = {
@@ -109,6 +111,17 @@ def similar(a, b):
     return difflib.SequenceMatcher(None, a, b).ratio()
 
 
+def load_seed_used():
+    try:
+        return json.load(open(SEEDS_USED_PATH, encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_seed_used(state):
+    json.dump(state, open(SEEDS_USED_PATH, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+
 def home_context(base):
     """最近 5 条动态摘要（喂 prompt 的家园上下文）。"""
     r = api(base, "GET", "/api/posts?limit=5")
@@ -148,9 +161,12 @@ def run_post(args, llmcore, char_config, persona):
     if not args.force and any(str(p.get("created_at", "")).startswith(today) for p in recent):
         print(f"[skip] {CHAR_NAME[args.actor]} 今天已发过圈（--force 可覆盖）")
         return 0
-    seed = {k: random.choice(SEEDS[args.actor][k]) for k in ("events", "moods", "scenes")}
-    seed = {"event": seed["events"], "mood": seed["moods"], "scene": seed["scenes"]}
-    few_shot = "\n".join(f"- {p['content'][:50]}" for p in recent[:2]) or None
+    used_ev = load_seed_used().get(args.actor, [])
+    pool = [e for e in SEEDS[args.actor]["events"] if e not in used_ev] or SEEDS[args.actor]["events"]
+    seed = {"event": random.choice(pool),
+            "mood": random.choice(SEEDS[args.actor]["moods"]),
+            "scene": random.choice(SEEDS[args.actor]["scenes"])}
+    few_shot = "\n".join(f"- {p['content'][:50]}" for p in recent[:8]) or None
     mem = char_config.recall(seed["event"])
     prompt = build_post_prompt(persona, mem, few_shot, seed, home_context(base), lore_block(args.lore_file))
 
@@ -177,6 +193,10 @@ def run_post(args, llmcore, char_config, persona):
         print(f"[ok] 已发圈 post_id={r['id']}：{content}")
         from homeland_ingest import homeland_ingest
         homeland_ingest(char_config, "moment", "朋友圈", "发了新朋友圈动态", content)
+        st = load_seed_used()
+        st.setdefault(args.actor, []).append(seed["event"])
+        st[args.actor] = st[args.actor][-SEED_REUSE_WINDOW:]
+        save_seed_used(st)
         ok = True
         break
     if not ok:

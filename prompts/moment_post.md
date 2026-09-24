@@ -15,7 +15,7 @@
 【相关记忆】
 {{recall_mem}}
 
-【你以前发过的圈（口吻参考，不要重复内容）】
+【你近期发过的圈（仅参考口吻！以下话题/场景/意象已经用过，严禁再写相似的——换了措辞讲同一件事也算重复，必须换全新话题）】
 {{few_shot_posts}}
 
 【今天的事件种子】
@@ -44,6 +44,6 @@
 |---|---|
 | persona_self | GA llmcore 角色 persona（setup_ga 已加载） |
 | recall_mem | char_config.recall(种子事件文本) |
-| few_shot_posts | 该角色 posts 表最近 2 条原文（无则写"你还没发过圈"） |
+| few_shot_posts | 该角色 posts 表最近 8 条原文（防重复视野；无则写"你还没发过圈"） |
 | seed_event/mood/scene | seeds/moments_seeds.json 随机抽取 |
 | home_context | 最近 5 条动态（各角色）+ 最近 3 条主人留言摘要 |

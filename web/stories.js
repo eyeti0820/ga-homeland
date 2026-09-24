@@ -139,7 +139,7 @@ async function renderDetail(sid) {
   if ("IntersectionObserver" in window) {
     const io = new IntersectionObserver(es => {
       for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); fillChap(e.target.dataset.cid, e.target); }
-    }, { rootMargin: "1200px 0px" });
+    }, { rootMargin: "600px 0px" });
     for (const [cid, card] of lazy) { card.dataset.cid = cid; io.observe(card); }
   } else {
     lazy.forEach(([cid, card]) => fillChap(cid, card));   // 老浏览器回退：全量

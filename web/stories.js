@@ -89,11 +89,14 @@ async function renderDetail(sid) {
   const head = el("section", "st-head glass");
   head.appendChild(el("h1", null, esc(s.title)));
   head.appendChild(el("div", "fields",
-    `${s.background ? `背景：<b>${esc(s.background)}</b><br>` : ""}` +
-    `${s.user_identity ? `你的身份：<b>${esc(s.user_identity)}</b><br>` : ""}` +
     `执笔：${(s.cast || []).map(c => `<b>${esc(CAST[c] || c)}</b>`).join(" · ")}`));
-  if (s.background === "" && s.user_identity === "") head.querySelector(".fields").innerHTML =
-    `执笔：${(s.cast || []).map(c => `<b>${esc(CAST[c] || c)}</b>`).join(" · ")}`;
+  if (s.background || s.user_identity) {
+    const det = el("details", "st-setting");
+    det.appendChild(el("summary", null, "📖 背景与你的身份（点击展开）"));
+    if (s.background) det.appendChild(el("div", "set-body", esc(s.background)));
+    if (s.user_identity) det.appendChild(el("div", "set-body set-id", `【你的身份】\n${esc(s.user_identity)}`));
+    head.appendChild(det);
+  }
   const bv = el("div", "st-bible");
   bv.appendChild(el("span", "tag", "剧情圣经"));
   bv.appendChild(document.createTextNode(

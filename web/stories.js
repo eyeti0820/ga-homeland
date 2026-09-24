@@ -40,7 +40,7 @@ window.addEventListener("hashchange", route);
 async function renderList() {
   view.innerHTML = "";
   let list;
-  try { list = await jget(API); } catch (e) {
+  try { const r = await jget(API); list = Array.isArray(r) ? r : (r.stories || []); } catch (e) {
     view.appendChild(el("p", "st-empty", "加载失败，稍后再试"));
     return;
   }

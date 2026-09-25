@@ -139,7 +139,7 @@ def get_story(sid: int, conn=Depends(get_db)):
     d = _story_out(conn, _story(conn, sid))
     chapters = [
         {"id": c["id"], "idx": c["idx"], "kind": c["kind"], "author_slug": c["author_slug"],
-         "title": c["title"], "consumed": c["consumed"], "created_at": c["created_at"],
+         "title": c["title"], "summary": c["summary"], "consumed": c["consumed"], "created_at": c["created_at"],
          "chars": len(c["content"] or "")}
         for c in conn.execute(
             "SELECT * FROM story_chapters WHERE story_id=? ORDER BY idx, id", (sid,)

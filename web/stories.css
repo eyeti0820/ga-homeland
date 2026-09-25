@@ -141,3 +141,28 @@
   .st-timeline { padding-left: 20px; }
   .chap::before { left:-17px; }
 }
+
+/* ---------- 章节目录 + 折叠章（0925：默认收起，点开即读） ---------- */
+.st-toc { padding: 14px 16px 16px; margin-bottom: 16px; }
+.st-toc .toc-title { font-size: 11.5px; letter-spacing: .16em; color: var(--ink-soft); margin-bottom: 9px; }
+.st-toc .toc-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.toc-chip { font-family: var(--font-hand); font-size: 12px; letter-spacing: .03em; cursor: pointer;
+  color: var(--ink-soft); background: rgba(255,255,255,.6); border: 1px solid rgba(var(--shade),.12);
+  border-radius: 999px; padding: 4px 12px; transition: all .15s; }
+.toc-chip:hover { background: #fff; color: var(--ink); transform: translateY(-1px); }
+.toc-chip.latest { color: #fffdf8; background: var(--warm); border-color: transparent;
+  box-shadow: 0 3px 8px rgba(201,123,90,.28); }
+
+details.chap > summary.ch-top { display: block; list-style: none; cursor: pointer;
+  user-select: none; margin-bottom: 0; }
+details.chap > summary.ch-top::-webkit-details-marker { display: none; }
+details.chap > summary.ch-top:hover .ch-title { color: var(--warm); }
+details.chap[open] > summary.ch-top { margin-bottom: 12px; padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(var(--shade),.16); }
+summary.ch-top .ch-line1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+summary.ch-top .ch-arrow { font-size: 10px; color: var(--ink-soft); transition: transform .18s; }
+details.chap[open] .ch-arrow { transform: rotate(90deg); }
+summary.ch-top .ch-time { margin-left: auto; }
+summary.ch-top .ch-brief { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: 12px; color: var(--ink-soft); line-height: 1.65; margin-top: 5px; }
+.chap .ch-body { padding-top: 2px; }

@@ -32,6 +32,14 @@ VOICE_DIR = ROOT / "恋与深空故事素材" / "LoRA训练资料"
 DEFAULT_MIN_HOURS = 18
 BIBLE_CHRONICLE_CAP = 12
 
+# 默认全书文风（stories.style_json.tone 可按书覆盖；多行纯文本，注入模板 {tone_block}）
+DEFAULT_TONE = """\
+基调：轻松幽默的恋爱喜剧，参考顾漫《微微一笑很倾城》《杉杉来吃》。
+多写男主之间的插科打诨、损友互怼、争风吃醋的日常；NPC 配角放心给戏份，制造笑料和烟火气。
+男女主互动以幽默恋爱趣事为主：甜而不腻，撩而不油，心动藏在日常小事里。
+科幻设定只做背景板：Evol、猎人设定可以出现，但用来制造笑料和名场面——禁止大段世界观考据、科幻术语轰炸、严肃学术腔。
+允许偶尔的严肃/深情桥段，但必须短，且为下一处笑点或心动瞬间服务。"""
+
 
 def voice_profile(actor: str) -> str:
     """口吻档案（素材库精选层 L1，只读；缺失不阻塞）。"""
@@ -173,6 +181,7 @@ def main():
         persona=persona, title=story["title"], background=story["background"] or "（自由发挥）",
         char_cn=char_cn, user_identity=story["user_identity"] or "与 cast 关系由你定义",
         voice_profile=voice_profile(args.actor), bible_block=bible_block(bible),
+        tone_block=story.get("style", {}).get("tone") or DEFAULT_TONE,
         prev_summary=prev_summary, recent_block=recent_block, notes_block=notes_block,
         mode_block=mode_block, recall_mem=memory or "（无相关记忆）",
         idx=idx, words_range=words_range,

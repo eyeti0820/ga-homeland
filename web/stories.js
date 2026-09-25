@@ -108,27 +108,41 @@ async function renderDetail(sid) {
   const tl = el("section", "st-timeline");
   const chaps = s.chapters || [];
   if (!chaps.length) tl.appendChild(el("p", "st-empty", "第一章还在路上"));
-  const lazy = [];   // 列表接口不带正文（省流量），逐章懒加载
+  const notes = [];   // 纸条不折叠，直接拉取
+  const folds = [];   // 可折叠章（chapter / master_seg）：{ cid, box, label, chip }
+  let chapCount = 0;
+
   for (const c of chaps) {
-    let a = null;
     if (c.kind === "chapter") {
-      a = el("article", "chap body glass");
-      a.appendChild(el("div", "ch-top",
-        `<span><span class="ch-no">第${c.idx}章</span><span class="ch-title">${esc(c.title || "")}</span></span>` +
-        `<span class="ch-time">${esc(CAST[c.author_slug] || "")} · ${fmtTime(c.created_at)}</span>`));
+      chapCount++;
+      const box = el("details", "chap body glass");
+      box.appendChild(el("summary", "ch-top",
+        `<span class="ch-line1"><span class="ch-arrow">▶</span><span class="ch-no">第${c.idx}章</span>` +
+        `<span class="ch-title">${esc(c.title || "")}</span>` +
+        `<span class="ch-time">${esc(CAST[c.author_slug] || "")} · ${fmtTime(c.created_at)}</span></span>` +
+        (c.summary ? `<span class="ch-brief">${esc(c.summary)}</span>` : "")));
+      box.appendChild(el("div", "ch-body")).appendChild(el("div", "ch-text", "…"));
+      folds.push({ cid: c.id, box, label: `第${c.idx}章·${c.title || ""}` });
+      tl.appendChild(box);
     } else if (c.kind === "master_note") {
-      a = el("article", "chap note");
+      const a = el("article", "chap note");
       a.appendChild(el("div", "ch-top", `<span class="ch-title">🎬 导演纸条</span><span class="ch-time">${fmtTime(c.created_at)}${c.consumed ? " · 已落实" : ""}</span>`));
+      a.appendChild(el("div", "ch-text", "…"));
+      notes.push([c.id, a]);
+      tl.appendChild(a);
     } else if (c.kind === "master_seg") {
-      a = el("article", "chap seg glass");
-      a.appendChild(el("div", "ch-top", `<span><span class="ch-no">插入</span><span class="ch-title">${esc(c.title || "")}</span></span><span class="ch-time">你 · ${fmtTime(c.created_at)}</span>`));
+      const box = el("details", "chap seg glass");
+      box.appendChild(el("summary", "ch-top",
+        `<span class="ch-line1"><span class="ch-arrow">▶</span><span class="ch-no">插入</span>` +
+        `<span class="ch-title">${esc(c.title || "")}</span>` +
+        `<span class="ch-time">你 · ${fmtTime(c.created_at)}</span></span>` +
+        (c.summary ? `<span class="ch-brief">${esc(c.summary)}</span>` : "")));
+      box.appendChild(el("div", "ch-body")).appendChild(el("div", "ch-text", "…"));
+      folds.push({ cid: c.id, box, label: `插·${c.title || ""}` });
+      tl.appendChild(box);
     }
-    if (!a) continue;
-    a.appendChild(el("div", "ch-text", "…"));
-    lazy.push([c.id, a]);
-    tl.appendChild(a);
   }
-  /* 真懒加载：滚到视口附近（前后~1200px缓冲）才拉正文；拉过的不再拉 */
+  /* 真懒加载：收起态只显示标题+摘要（省流量）；点开某一章才拉正文，拉过的不再拉 */
   const fillChap = (cid, card) => {
     jget(`${API}/${sid}/chapters/${cid}`).then(full => {
       const t = card.querySelector(".ch-text");
@@ -136,19 +150,35 @@ async function renderDetail(sid) {
       if (full.summary && t) t.after(el("div", "ch-sum", "本章梗概：" + esc(full.summary)));
     }).catch(() => { const t = card.querySelector(".ch-text"); if (t) t.textContent = "（加载失败，刷新试试）"; });
   };
-  if ("IntersectionObserver" in window) {
-    const io = new IntersectionObserver(es => {
-      for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); fillChap(e.target.dataset.cid, e.target); }
-    }, { rootMargin: "600px 0px" });
-    for (const [cid, card] of lazy) { card.dataset.cid = cid; io.observe(card); }
-  } else {
-    lazy.forEach(([cid, card]) => fillChap(cid, card));   // 老浏览器回退：全量
+  for (const f of folds) {
+    f.box.addEventListener("toggle", () => {
+      if (f.box.open && !f.box.dataset.loaded) { f.box.dataset.loaded = "1"; fillChap(f.cid, f.box); }
+    });
+  }
+  notes.forEach(([cid, card]) => fillChap(cid, card));   // 纸条短小，进页面直接拉
+
+  /* 章节目录：页顶锚点导航，点击展开对应章并平滑跳转 */
+  if (folds.length) {
+    const toc = el("nav", "st-toc glass");
+    toc.appendChild(el("div", "toc-title",
+      `📖 章节目录${chapCount ? " · 已更 " + chapCount + " 章" : ""}（点击直达，正文点开即读）`));
+    const lst = el("div", "toc-list");
+    for (const f of folds) {
+      const chip = el("button", "toc-chip", esc(f.label));
+      chip.type = "button";
+      chip.onclick = () => {
+        f.box.open = true;
+        f.box.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.scrollBy(0, -84);
+      };
+      f.chip = chip;
+      lst.appendChild(chip);
+    }
+    toc.appendChild(lst);
+    folds[folds.length - 1].chip.classList.add("latest");   // 标记最新
+    view.appendChild(toc);
   }
   view.appendChild(tl);
-
-  /* 打开即定位最新章（方案一：自动滚到底部最新章，不倒序） */
-  const lastChap = tl.querySelector(".chap:last-of-type");
-  if (lastChap) setTimeout(() => { lastChap.scrollIntoView({ block: "start" }); window.scrollBy(0, -70); }, 60);
 
   /* 导演操作台 */
   const dir = el("section", "director glass");

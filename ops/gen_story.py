@@ -146,7 +146,17 @@ def main():
         full = api(args.api, "GET", f"/api/stories/{sid}/chapters/{c['id']}")
         recent.append(f"—— 第{full['idx']}章《{full['title']}》（{CHAR_NAME.get(full['author_slug'],'')} 执笔）——\n{full['content']}")
     recent_block = "\n\n".join(recent) or "（没有更早章节）"
-    prev_summary = (chaps[-3]["summary"] if len(chaps) >= 3 else None) or "（无；你就是开篇）"
+    # 0925修: 列表端点章节dict无summary键(仅单章full端点有), len(chaps)>=3时直接取会KeyError
+    prev_summary = None
+    if len(chaps) >= 3:
+        c3 = chaps[-3]
+        prev_summary = c3.get("summary")
+        if not prev_summary:
+            try:
+                prev_summary = api(args.api, "GET", f"/api/stories/{sid}/chapters/{c3['id']}").get("summary")
+            except Exception:
+                prev_summary = None
+    prev_summary = prev_summary or "（无；你就是开篇）"
 
     if not chaps:
         mode_block = ("【本章是全书开篇】\n由你为这部 IF 小说写下第一章："

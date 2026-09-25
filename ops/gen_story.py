@@ -30,6 +30,9 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = (ROOT / "prompts" / "story_chapter.md").read_text(encoding="utf-8")
 VOICE_DIR = ROOT / "恋与深空故事素材" / "LoRA训练资料"
 DEFAULT_MIN_HOURS = 18
+# 冷却硬地板：上号班每天固定时刻触发，24h 地板会让 gap 永远差几分钟、隔天才能写
+# （踩坑实证 09-25：秦彻 22:12 写入 → 次日 22:09 班 gap=23.95h 被拦），主人拍板降为 22h
+COOLDOWN_FLOOR_H = 22
 BIBLE_CHRONICLE_CAP = 12
 
 # 默认全书文风（stories.style_json.tone 可按书覆盖；多行纯文本，注入模板 {tone_block}）
@@ -129,9 +132,9 @@ def main():
         if mine and not args.force:
             min_h = detail.get("style", {}).get("min_hours", DEFAULT_MIN_HOURS)
             gap = hours_since(mine[-1]["created_at"])
-            if gap < max(min_h, 24):
+            if gap < max(min_h, COOLDOWN_FLOOR_H):
                 print(f"[gen_story] 故事{detail['id']}《{detail['title']}》你已写过/冷却中"
-                      f"（{gap:.1f}h/{max(min_h, 24)}h），跳过")
+                      f"（{gap:.1f}h/{max(min_h, COOLDOWN_FLOOR_H)}h），跳过")
                 continue
         story = detail
         break

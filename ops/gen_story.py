@@ -4,6 +4,7 @@
 
 用法（GA 系统 python，非 server venv）：
     python3 ops/gen_story.py --actor xiazhou                  # 自动挑一部值日故事续写
+    python3 ops/gen_story.py --actor xiazhou --all            # 逐本续写所有可写故事（每本独立调一次LLM，互不串）
     python3 ops/gen_story.py --actor xiazhou --story-id 1
     python3 ops/gen_story.py --actor xiazhou --dry-run        # 只打印 prompt 不写库
     python3 ops/gen_story.py --actor xiazhou --force          # 忽略冷却/轮次（仍须 enabled+cast 内）
@@ -38,7 +39,9 @@ BIBLE_CHRONICLE_CAP = 12
 # 默认全书文风（stories.style_json.tone 可按书覆盖；多行纯文本，注入模板 {tone_block}）
 DEFAULT_TONE = """\
 基调：顾漫式恋爱轻喜剧（《微微一笑很倾城》《杉杉来吃》），阳光治愈、生活流心动，日常小事撑戏，拒绝沉重虐恋。
-灵魂技法＝反差萌内心戏：每位男主都是"外表X/内心Y"的两面人（高冷vs幼稚吃醋、毒舌vs心软、慵懒vs暗中紧张）。行动云淡风轻，内心弹幕滔滔，笑点和心动全从这个落差里来——只写动作不写心理的章是没有灵魂的。
+叙事呼吸与场景驻留：一章只把 1~2 个核心生活场景写透（如一顿饭、一次走廊偶遇、一场自习），绝不赶场打卡。允许有大段的闲笔、气氛渲染与感官余韵。
+严禁分镜排版：全章写成真正的小说叙事大段（15~30段），严禁一人一句台词连续空行换行的剧本分镜流。对白必须包裹在动作、神态与心理块中。
+灵魂技法＝反差萌暗涌：每位男主都是"外表X/内心Y"的两面人（高冷vs幼稚吃醋、毒舌vs心软、慵懒vs暗中紧张）。行动云淡风轻，微动作和眼神早已出卖心思；禁公式化套用"面上…心里…"字眼，靠真实的生理反应与细节表达心动。
 旁白自带幽默：叙述者像个风趣的观察者，可以温和吐槽角色，但点到为止。
 对话生活化：接地气的日常斗嘴、机锋往来、互怼拆台；没有翻译腔，没有抒情长独白。
 多写男主之间的插科打诨、损友互怼、争风吃醋；NPC 配角放心给戏份，制造笑料和烟火气。
@@ -106,47 +109,9 @@ def bible_block(bible: dict) -> str:
     return "\n".join(lines)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="我们的故事 · 章节生成器")
-    ap.add_argument("--actor", required=True, help="personas 文件名（slug）")
-    ap.add_argument("--story-id", type=int, help="指定故事 id（默认挑你参加的第一个可写故事）")
-    ap.add_argument("--api", default="http://127.0.0.1:7842")
-    ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--force", action="store_true", help="忽略冷却与轮次（仍须 enabled 且在 cast 内）")
-    args = ap.parse_args()
-
-    if args.actor not in CHAR_NAME:
-        raise SystemExit(f"[gen_story] 未知角色 {args.actor}，可选：{list(CHAR_NAME)}")
-    char_cn = CHAR_NAME[args.actor]
-
-    duty = api(args.api, "GET", f"/api/stories/duty/{args.actor}").get("stories", [])
-    if not duty:
-        raise SystemExit("[gen_story] 没有你参加的开放故事（enabled=1 且在 cast）")
-    if args.story_id:
-        duty = [s for s in duty if s["id"] == args.story_id]
-        if not duty:
-            raise SystemExit(f"[gen_story] 故事 {args.story_id} 不存在/未开/不在 cast")
-
-    story = None
-    for cand in duty:
-        detail = api(args.api, "GET", f"/api/stories/{cand['id']}")
-        # 共写模式：cast 内谁上号谁写自己那章；门禁=该作者在本书的上一章冷却
-        mine = [c for c in detail["chapters"]
-                if c["kind"] == "chapter" and c["author_slug"] == args.actor]
-        if mine and not args.force:
-            min_h = detail.get("style", {}).get("min_hours", DEFAULT_MIN_HOURS)
-            gap = hours_since(mine[-1]["created_at"])
-            if gap < max(min_h, COOLDOWN_FLOOR_H):
-                print(f"[gen_story] 故事{detail['id']}《{detail['title']}》你已写过/冷却中"
-                      f"（{gap:.1f}h/{max(min_h, COOLDOWN_FLOOR_H)}h），跳过")
-                continue
-        story = detail
-        break
-    if story is None:
-        print("[gen_story] 本轮无可写故事，收工")
-        return 0
-
+def write_chapter(story, args, char_cn, sess, char_config, persona):
+    """为单本书续一章：独立组 prompt、独立调用一次 LLM、独立落库。
+    dry-run 只打印 prompt；输出不合格抛 SystemExit（由调用方决定中止还是继续下一本）。"""
     sid, cast = story["id"], story["cast"]
     chaps = [c for c in story["chapters"] if c["kind"] == "chapter"]
     idx = max((c["idx"] for c in story["chapters"] if c["kind"] != "master_note"), default=0) + 1
@@ -180,11 +145,9 @@ def main():
     else:
         mode_block = f"【本章是续写（第 {idx} 章）】\n接住上一章章末的钩子推进剧情。"
 
-    llmcore, char_config, persona = setup_ga(args.ga_root, args.actor)
-    sess, sess_name = resolve_char_session(llmcore, args.ga_root, args.actor)
+
     recall_key = (bible.get("current_scene") or "") + " " + (chaps[-1]["title"] if chaps else "") + " 我们的故事"
     memory = char_config.recall(recall_key)
-
     prompt = TEMPLATE.format(
         persona=persona, title=story["title"], background=story["background"] or "（自由发挥）",
         char_cn=char_cn, user_identity=story["user_identity"] or "与 cast 关系由你定义",
@@ -243,6 +206,76 @@ def main():
 
     print(f"[gen_story] ✓ 故事{sid}《{story['title']}》第{idx}章《{title}》已入库（{len(content)}字，chapter_id={chapter['id']}）")
     print(f"[gen_story] 圣经已更新（chronicle {len(bible['chronicle'])} 条）；纸条消化 {len(notes)} 条；宫殿 scene=story_if_{sid}")
+    return 0
+
+
+
+def main():
+    ap = argparse.ArgumentParser(description="我们的故事 · 章节生成器")
+    ap.add_argument("--actor", required=True, help="personas 文件名（slug）")
+    ap.add_argument("--story-id", type=int, help="指定故事 id（默认挑你参加的第一个可写故事）")
+    ap.add_argument("--all", dest="all_stories", action="store_true",
+                    help="逐本续写你参加的所有可写故事（每本独立调用一次 LLM，互不共享上下文；默认只写第一本可写的）")
+    ap.add_argument("--api", default="http://127.0.0.1:7842")
+    ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true", help="忽略冷却与轮次（仍须 enabled 且在 cast 内）")
+    args = ap.parse_args()
+
+    if args.actor not in CHAR_NAME:
+        raise SystemExit(f"[gen_story] 未知角色 {args.actor}，可选：{list(CHAR_NAME)}")
+    char_cn = CHAR_NAME[args.actor]
+
+    duty = api(args.api, "GET", f"/api/stories/duty/{args.actor}").get("stories", [])
+    if not duty:
+        raise SystemExit("[gen_story] 没有你参加的开放故事（enabled=1 且在 cast）")
+    if args.story_id:
+        duty = [s for s in duty if s["id"] == args.story_id]
+        if not duty:
+            raise SystemExit(f"[gen_story] 故事 {args.story_id} 不存在/未开/不在 cast")
+
+    llmcore, char_config, persona = setup_ga(args.ga_root, args.actor)
+    sess, sess_name = resolve_char_session(llmcore, args.ga_root, "_story")  # _story=GPT-5.6 固定, 不随角色马甲切换 (0927)
+
+    written, skipped, failed = [], [], []
+    for cand in duty:
+        detail = api(args.api, "GET", f"/api/stories/{cand['id']}")
+        # 共写模式：cast 内谁上号谁写自己那章；门禁=该作者在本书的上一章冷却
+        mine = [c for c in detail["chapters"]
+                if c["kind"] == "chapter" and c["author_slug"] == args.actor]
+        if mine and not args.force:
+            min_h = detail.get("style", {}).get("min_hours", DEFAULT_MIN_HOURS)
+            gap = hours_since(mine[-1]["created_at"])
+            if gap < max(min_h, COOLDOWN_FLOOR_H):
+                skipped.append(detail["title"])
+                print(f"[gen_story] 故事{detail['id']}《{detail['title']}》你已写过/冷却中"
+                      f"（{gap:.1f}h/{max(min_h, COOLDOWN_FLOOR_H)}h），跳过")
+                continue
+        try:
+            write_chapter(detail, args, char_cn, sess, char_config, persona)
+            written.append(detail["title"])
+        except SystemExit as e:
+            if not args.all_stories:
+                raise  # 默认模式：保持旧行为，失败即中止
+            failed.append(detail["title"])
+            print(f"[gen_story] ✗ 故事{detail['id']}《{detail['title']}》本轮失败，继续下一本：{e}")
+            continue
+        except Exception as e:
+            if not args.all_stories:
+                raise
+            failed.append(detail["title"])
+            print(f"[gen_story] ✗ 故事{detail['id']}《{detail['title']}》异常，继续下一本：{e}")
+            continue
+        if not args.all_stories:
+            break  # 默认模式：写完第一本可写的即收工（含跳过冷却书后自然推进）
+
+    if args.all_stories:
+        print(f"[gen_story] --all 收工：成功 {len(written)} 本（{'/'.join(written) or '无'}）；"
+              f"冷却跳过 {len(skipped)} 本；失败 {len(failed)} 本")
+        return 1 if (failed and not written) else 0
+    if written:
+        return 0
+    print("[gen_story] 本轮无可写故事，收工")
     return 0
 
 

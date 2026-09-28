@@ -26,7 +26,7 @@ import urllib.request
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
 sys.path.insert(0, BASE)
-from gen_note_reply import setup_ga, resolve_char_session, api, CHAR_NAME, ask_llm  # noqa: E402
+from gen_note_reply import setup_ga, resolve_char_session, api, CHAR_NAME, ask_llm, tidy_lines  # noqa: E402
 
 DEFAULT_GA_ROOT = "/Users/potato/Library/Application Support/GenericAgent/runtime/app"
 SEEDS = json.load(open(os.path.join(ROOT, "seeds", "moments_seeds.json"), encoding="utf-8"))
@@ -183,7 +183,7 @@ def run_post(args, llmcore, char_config, persona):
         if body is None:
             print("[fail] 模型双渠道失败，本条朋友圈不发")
             return 1
-        content = (parse_json_loose(body).get("content") or "").strip()
+        content = tidy_lines((parse_json_loose(body).get("content") or "").strip())
         if not content:
             print(f"[retry{attempt}] 输出解析为空，原始：{body[:120]}")
             continue
@@ -255,7 +255,7 @@ def run_interact(args, llmcore, char_config, persona):
         body = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess)
         if body is None:
             continue  # 双渠道失败, 任务留待下轮
-        content = (parse_json_loose(body).get("content") or "").strip()
+        content = tidy_lines((parse_json_loose(body).get("content") or "").strip())
         if not content:
             print(f"[fail] 解析为空：{body[:120]}"); continue
         api(base, "POST", f"/api/posts/{target['id']}/comments", {
@@ -308,7 +308,7 @@ def run_cross(args, llmcore, char_config, persona):
     if body is None:
         return 0
     out = parse_json_loose(body)
-    action, content = (out.get("action") or "comment"), (out.get("content") or "").strip()
+    action, content = (out.get("action") or "comment"), tidy_lines((out.get("content") or "").strip())
     if action == "skip" or not content:
         print(f"[skip] 模型选择不评论（{body[:80]}）"); return 0
     api(base, "POST", f"/api/posts/{target['id']}/comments", {
@@ -360,7 +360,7 @@ def run_npc_comment(args, llmcore, char_config):
     if body is None:
         print("[fail] 模型双渠道失败，NPC 评论不发")
         return 0
-    content = (parse_json_loose(body).get("content") or "").strip()
+    content = tidy_lines((parse_json_loose(body).get("content") or "").strip())
     if not content:
         print(f"[fail] 解析为空：{body[:120]}"); return 0
     api(base, "POST", f"/api/posts/{target['id']}/comments", {

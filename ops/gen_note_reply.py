@@ -337,5 +337,29 @@ def main():
     return 0
 
 
+# ── 格式清洗：合并句中断裂的硬换行(0928 朋友圈半句提行) ──
+_SENT_END = set('。！？…；!?;~～”’"\'」』）)】》')   # 行尾是这些=合法断行
+_LIST_MARK = re.compile(r"^\s*(?:[0-9①-⑳]+[.、．]|[•\-\*]\s)")  # 列表行不并
+
+def tidy_lines(text):
+    """把不在句末标点处的换行合并回去；保留句末分段与列表/空行结构。"""
+    if not text or "\n" not in text:
+        return text
+    out = []
+    for l in (x.strip() for x in text.split("\n")):
+        if not l:
+            if out and out[-1]:
+                out.append("")
+            continue
+        if (out and out[-1] and out[-1][-1] not in _SENT_END
+                and not _LIST_MARK.match(l)):
+            out[-1] += l
+        else:
+            out.append(l)
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out)
+
+
 if __name__ == "__main__":
     sys.exit(main())

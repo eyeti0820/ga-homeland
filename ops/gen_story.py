@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gen_note_reply import (
-    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session,
+    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session, ask_llm,
 )
 from homeland_ingest import homeland_ingest
 
@@ -162,14 +162,20 @@ def write_chapter(story, args, char_cn, sess, char_config, persona):
         print(prompt)
         return 0
 
-    raw = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+    raw = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess, sess_name=sess_name)
+    if raw is None:
+        print("[fail] 模型双渠道失败，本章不写")
+        return 0
     out = parse_json_out(raw)
     if out is None:  # 一次纠偏机会
-        raw2 = "".join(sess.raw_ask([
+        raw2 = ask_llm(llmcore, args.ga_root, args.actor, [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": raw},
             {"role": "user", "content": "上一条输出无法解析。请严格只输出一个合法 JSON 对象（不要代码围栏/解释），字段照契约。"},
-        ]))
+        ], sess=sess, sess_name=sess_name)
+        if raw2 is None:
+            print("[fail] 纠偏双渠道失败，本章不写")
+            return 0
         out = parse_json_out(raw2)
     if not isinstance(out, dict) or not (out.get("content") or "").strip() or len(out["content"]) < 300:
         head = ((out.get("content") or "") if isinstance(out, dict) else raw)[:300]

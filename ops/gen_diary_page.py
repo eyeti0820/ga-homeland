@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_note_reply import (  # noqa: E402  复用 M1 骨架
-    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session,
+    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session, ask_llm,
 )
 
 MIN_HOURS_BETWEEN_PAGES = 36
@@ -142,7 +142,10 @@ def main():
         print(prompt)
         return 0
 
-    raw = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+    raw = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess, sess_name=sess_name)
+    if raw is None:
+        print("[skip] 模型双渠道失败，本次日记页不写")
+        return 1
     body, mood = parse_mood(raw)
     body = clean_page(body)
     print(f"生成（{len(body)}字，心情={mood}）：\n{body}")

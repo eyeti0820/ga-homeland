@@ -31,7 +31,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))          # ops/ 内互相 import
-from gen_note_reply import setup_ga, resolve_char_session, api, CHAR_NAME, DEFAULT_GA_ROOT  # noqa: E402
+from gen_note_reply import setup_ga, resolve_char_session, api, CHAR_NAME, DEFAULT_GA_ROOT, ask_llm  # noqa: E402
 from gen_moment import parse_json_loose                              # noqa: E402
 
 SEEDS = json.load(open(ROOT / "seeds" / "forum_seeds.json", encoding="utf-8"))
@@ -117,9 +117,22 @@ def mask_id_of(base, forum_username):
 
 
 # ---------- LLM ----------
+_ASK_CTX = {"llmcore": None, "ga_root": None}  # 在拿到 llmcore 的入口处填充, 供 ask_json 走主备切换
+
+
+def _ask_with_fb(sess, prompt):
+    """主渠道报错(!!!Error:)→切 _fallback 备用渠道→双败 None(不入库)"""
+    if _ASK_CTX.get("llmcore") is not None:
+        return ask_llm(_ASK_CTX["llmcore"], _ASK_CTX["ga_root"], "forum", prompt, sess=sess)
+    body = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+    return None if (not body or "!!!Error:" in body[:400]) else body
+
+
 def ask_json(sess, prompt, keys):
     for _ in range(2):
-        body = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+        body = _ask_with_fb(sess, prompt)
+        if body is None:
+            return None
         data = parse_json_loose(body)
         if isinstance(data, dict) and all((data.get(k) or "").strip() for k in keys):
             return {k: data[k].strip() for k in keys}
@@ -305,6 +318,7 @@ def run_cross(base, args):
     actor = args.cross
     cn = CHAR_NAME.get(actor, actor)
     llmcore, char_config, persona = setup_ga(args.ga_root, actor)
+    _ASK_CTX.update(llmcore=llmcore, ga_root=args.ga_root)
     sess, _ = resolve_char_session(llmcore, args.ga_root, actor)
     mask_name = MASK_MAP.get(cn) or MASK_MAP.get(actor)
     if not mask_name:
@@ -442,13 +456,14 @@ def main():
     if modes != 1:
         ap.error("四选一：--npc / --npc-reply / --cross ACTOR / --editor")
 
-    # NPC 与主编走 GLM 会话（不带任何真实角色 persona）
+    # NPC 与主编走 Gemini 会话（不带任何真实角色 persona）
     if args.npc or args.npc_reply or args.editor:
         ga_root = args.ga_root
         sys.path.insert(0, ga_root)
         try:
             import llmcore  # noqa: F401  (GA 系统内)
-            sess, _ = resolve_char_session(llmcore, ga_root, "GLM")
+            sess, _ = resolve_char_session(llmcore, ga_root, "Gemini")
+            _ASK_CTX.update(llmcore=llmcore, ga_root=ga_root)
         except Exception as e:
             print(f"[fail] GA llmcore 不可用：{e}（--dry-run 可跳过模型）")
             sess = None

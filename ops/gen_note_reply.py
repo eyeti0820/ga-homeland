@@ -126,6 +126,51 @@ def collect_tasks(base, char_id):
     return tasks
 
 
+# ---------- 统一 LLM 出口: 错误拦截 + _fallback 备用渠道 (0928 passionapi 400 事故) ----------
+def _is_llm_error(body):
+    return (not body) or ("!!!Error:" in body[:400])
+
+
+def _resolve_named_session(llmcore, ga_root, key):
+    """按 char_models.json 的 _fallback 等固定键解析会话；缺失/失败返回 None（不影响主流程）"""
+    try:
+        path = os.path.join(ga_root, "ga_config", "char_models.json")
+        if not json.load(open(path, encoding="utf-8")).get(key):
+            return None
+        sess, _name = resolve_char_session(llmcore, ga_root, key)
+        return sess
+    except Exception as e:
+        print(f"[_resolve_named_session] {key} 解析失败: {e}")
+        return None
+
+
+def ask_llm(llmcore, ga_root, actor, prompt, sess=None, sess_name=None):
+    """统一出口：主渠道 → 输出为错误文本(!!!Error:)时切 _fallback 备用渠道 → 双败返回 None。
+    调用方拿到 None 必须跳过本轮写入（防报错文本入库），返回 str 即正文。"""
+    msgs = prompt if isinstance(prompt, list) else [{"role": "user", "content": prompt}]
+    if sess is None:
+        sess, sess_name = resolve_char_session(llmcore, ga_root, actor)
+    try:
+        body = "".join(sess.raw_ask(msgs))
+    except Exception as e:
+        body = f"!!!Error: {e}"
+    if not _is_llm_error(body):
+        return body
+    print(f"[ask_llm] 主渠道({sess_name or actor})异常: {str(body)[:120]}")
+    fb = _resolve_named_session(llmcore, ga_root, "_fallback")
+    if fb is not None:
+        try:
+            body2 = "".join(fb.raw_ask(msgs))
+        except Exception as e:
+            body2 = f"!!!Error: {e}"
+        if not _is_llm_error(body2):
+            print("[ask_llm] 已切换 _fallback 备用渠道 ✓")
+            return body2
+        print(f"[ask_llm] 备用渠道也异常: {str(body2)[:120]}")
+    print("[ask_llm] 双渠道失败，本次放弃（不入库，留待下轮）")
+    return None
+
+
 def note_context(base, note_id):
     n = api(base, "GET", f"/api/notes/{note_id}")
     convo = [f"小墨贴的便签：「{n['content']}」"]
@@ -215,7 +260,10 @@ def run_proactive(args, me, char_cn):
     if args.dry_run:
         print(prompt[:1500] + "\n…(dry-run 截断)")
         return 0
-    raw = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+    raw = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess, sess_name=sess_name)
+    if raw is None:
+        print("[skip] 模型双渠道失败，本轮不写（防串味）")
+        return 1
     content = clean_reply(raw)
     print(f"生成：{content}")
     if len(content) < 8:
@@ -270,7 +318,9 @@ def main():
         if args.dry_run:
             print(prompt[:1200] + "\n…(dry-run 截断)")
             continue
-        raw = "".join(sess.raw_ask([{"role": "user", "content": prompt}]))
+        raw = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess, sess_name=sess_name)
+        if raw is None:
+            continue  # 双渠道失败, unread 保持 pending 留待下轮
         reply = clean_reply(raw)
         print(f"生成：{reply}")
         if len(reply) < 8:

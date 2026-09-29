@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 from gen_note_reply import (
-    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session, ask_llm,
+    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session, ask_llm, tidy_lines,
 )
 from homeland_ingest import homeland_ingest
 
@@ -81,7 +81,10 @@ def parse_json_out(raw: str):
             depth -= 1
             if depth == 0:
                 try:
-                    return json.loads(raw[start:i + 1])
+                    seg = raw[start:i + 1]
+                    seg = re.sub(r"\\\n(?=[nrtu])", r"\\", seg)  # 0929: 渠道折行腰斩转义(\+换行+n → \n), 先重组防游离字母
+                    blk = seg.replace("\\\n", "\\n")  # 0928: 修断错转义(\+真实换行 → 字面\n, gemini长文偶发)
+                    return json.loads(blk, strict=False)  # strict=False: 容字符串内裸控制字符(gemini长文排版倾向,0928)
                 except json.JSONDecodeError:
                     return None
     return None
@@ -109,7 +112,7 @@ def bible_block(bible: dict) -> str:
     return "\n".join(lines)
 
 
-def write_chapter(story, args, char_cn, sess, char_config, persona):
+def write_chapter(story, args, char_cn, sess, char_config, persona, llmcore, sess_name):
     """为单本书续一章：独立组 prompt、独立调用一次 LLM、独立落库。
     dry-run 只打印 prompt；输出不合格抛 SystemExit（由调用方决定中止还是继续下一本）。"""
     sid, cast = story["id"], story["cast"]
@@ -182,7 +185,9 @@ def write_chapter(story, args, char_cn, sess, char_config, persona):
         raise SystemExit(f"[gen_story] 模型输出不合格（content<300字或解析失败）。头300字：\n{head}")
 
     title = _denorm(out.get("title") or f"第{idx}章").strip()[:60]
-    content = _denorm(out["content"]).strip()
+    # 0929修: 渠道偶发按~90字节定宽折行长JSON, strict=False让裸换行存活进content(半截句提行)
+    # 入库前tidy_lines合并句中断裂换行(0928朋友圈同款修复,补齐story链路)
+    content = tidy_lines(_denorm(out["content"]).strip())
     summary = _denorm(out.get("summary") or content[:120]).strip()
     chapter = api(args.api, "POST", f"/api/stories/{sid}/chapters", {
         "kind": "chapter", "author_slug": args.actor, "title": title,
@@ -258,7 +263,7 @@ def main():
                       f"（{gap:.1f}h/{max(min_h, COOLDOWN_FLOOR_H)}h），跳过")
                 continue
         try:
-            write_chapter(detail, args, char_cn, sess, char_config, persona)
+            write_chapter(detail, args, char_cn, sess, char_config, persona, llmcore, sess_name)
             written.append(detail["title"])
         except SystemExit as e:
             if not args.all_stories:

@@ -96,6 +96,14 @@ def resolve_char_session(llmcore, ga_root, actor):
     sess = llmcore.resolve_session(hit)
     if not sess:
         raise SystemExit(f"[gen_note_reply] 会话 '{hit}' 类型不受支持")
+    # 1012: 本地会话(lmdeploy/qwen系)流式会把思考明文混进content, 统一非流式(服务器侧自动剥思考)
+    try:
+        _sig = f"{getattr(sess, 'name', '')} {getattr(sess, 'model', '')}".lower()
+        if "local" in _sig:
+            sess.stream = False
+            sess.read_timeout = max(getattr(sess, "read_timeout", 60), 600)
+    except Exception:
+        pass
     return sess, hit
 
 

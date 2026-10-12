@@ -68,21 +68,28 @@ def load_tpl(name):
 
 
 def parse_json_loose(raw):
-    """宽松解析模型输出：先 json.loads，再正则兜底，最后整行当 content。"""
+    """宽松解析模型输出：先 json.loads，再 strict=False 重试（坑19: 字符串值内裸换行），再正则兜底，最后整行当 content。"""
     t = raw.strip()
     t = re.sub(r"^```(json)?|```$", "", t, flags=re.M).strip()
     try:
         return json.loads(t)
     except Exception:
+        try:
+            return json.loads(t, strict=False)
+        except Exception:
+            pass
         m = re.search(r'\{[^{}]*"content"[^{}]*\}', t, re.S)
         if m:
             try:
-                return json.loads(m.group(0))
+                return json.loads(m.group(0), strict=False)
             except Exception:
                 c = re.search(r'"content"\s*:\s*"([^"]+)"', m.group(0))
                 if c:
                     return {"content": c.group(1)}
-        return {"content": t.splitlines()[0] if t.strip() else ""}
+        line1 = t.splitlines()[0].strip() if t.strip() else ""
+        if line1.startswith('{"') or '"content"' in line1:
+            return {"content": ""}  # 坑19变体: 折行/截断的JSON壳行禁当正文(踩坑:10-10 qiyu post9059壳入正文)
+        return {"content": line1}
 
 
 def today_str():

@@ -24,6 +24,7 @@ import difflib
 import hashlib
 import json
 import random
+import re
 import sys
 import uuid
 from datetime import date
@@ -158,7 +159,8 @@ def post_thread(base, board_key, mask_id, payload, actor_id, pin=False, dry=Fals
         print(f"    [dry] 本应 POST /threads board={board_key} mask={mask_id} pin={pin}")
         return None
     body = {"board_key": board_key, "mask_id": mask_id,
-            "title": payload["title"], "content": payload["content"]}
+            "title": re.sub(r"[\r\n]+", "", payload["title"]).strip(),
+            "content": payload["content"]}
     if pin:
         body["is_pinned"] = True
     r = api(base, "POST", "/api/forum/threads", body)

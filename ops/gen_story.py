@@ -184,11 +184,12 @@ def write_chapter(story, args, char_cn, sess, char_config, persona, llmcore, ses
         head = ((out.get("content") or "") if isinstance(out, dict) else raw)[:300]
         raise SystemExit(f"[gen_story] 模型输出不合格（content<300字或解析失败）。头300字：\n{head}")
 
-    title = _denorm(out.get("title") or f"第{idx}章").strip()[:60]
+    # 0930修: title/summary同样过tidy_lines(渠道90B定宽折行让title带裸换行: #44"灯\n市辨草糖栗香"/#47"会诊在挑\n台"实证)
+    title = tidy_lines(_denorm(out.get("title") or f"第{idx}章").strip())[:60]
     # 0929修: 渠道偶发按~90字节定宽折行长JSON, strict=False让裸换行存活进content(半截句提行)
     # 入库前tidy_lines合并句中断裂换行(0928朋友圈同款修复,补齐story链路)
     content = tidy_lines(_denorm(out["content"]).strip())
-    summary = _denorm(out.get("summary") or content[:120]).strip()
+    summary = tidy_lines(_denorm(out.get("summary") or content[:120]).strip())
     chapter = api(args.api, "POST", f"/api/stories/{sid}/chapters", {
         "kind": "chapter", "author_slug": args.actor, "title": title,
         "content": content, "summary": summary,
@@ -246,7 +247,7 @@ def main():
             raise SystemExit(f"[gen_story] 故事 {args.story_id} 不存在/未开/不在 cast")
 
     llmcore, char_config, persona = setup_ga(args.ga_root, args.actor)
-    sess, sess_name = resolve_char_session(llmcore, args.ga_root, "_story")  # _story=GPT-5.6 固定, 不随角色马甲切换 (0927)
+    sess, sess_name = resolve_char_session(llmcore, args.ga_root, args.actor)  # 1012: 故事跟随角色主聊天模型(char_models.json); 旧_story固定键退役(备份在temp/bak_1012_qinche_lora)
 
     written, skipped, failed = [], [], []
     for cand in duty:

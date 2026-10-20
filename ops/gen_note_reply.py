@@ -96,15 +96,23 @@ def resolve_char_session(llmcore, ga_root, actor):
     sess = llmcore.resolve_session(hit)
     if not sess:
         raise SystemExit(f"[gen_note_reply] 会话 '{hit}' 类型不受支持")
-    # 1012: 本地会话(lmdeploy/qwen系)流式会把思考明文混进content, 统一非流式(服务器侧自动剥思考)
-    try:
-        _sig = f"{getattr(sess, 'name', '')} {getattr(sess, 'model', '')}".lower()
-        if "local" in _sig:
-            sess.stream = False
-            sess.read_timeout = max(getattr(sess, "read_timeout", 60), 600)
-    except Exception:
-        pass
     return sess, hit
+
+
+def read_duty_active():
+    """1012主人定: 家园根duty.json=单LORA值班单一事实源; 读active_lora, 缺失/异常返回''(=全员走Gemini安全侧)"""
+    try:
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "duty.json")
+        return str(json.load(open(p, encoding="utf-8")).get("active_lora", "")).strip()
+    except Exception:
+        return ""
+
+
+def resolve_session_duty(llmcore, ga_root, actor):
+    """1012主人定: 发圈/回评/互评/日记模型接duty.json——值班者(actor==active_lora)走_duty_lora(当前挂的LORA),
+    其余强制_duty_off(Gemini); char_models角色键在此链路旁路, 换周零手改防串味"""
+    key = "_duty_lora" if actor == read_duty_active() else "_duty_off"
+    return resolve_char_session(llmcore, ga_root, key)
 
 
 # ---------- 服务侧：API ----------

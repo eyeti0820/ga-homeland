@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_note_reply import (  # noqa: E402  复用 M1 骨架
-    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session, ask_llm,
+    CHAR_NAME, DEFAULT_GA_ROOT, api, setup_ga, resolve_char_session, resolve_session_duty, ask_llm,
 )
 
 MIN_HOURS_BETWEEN_PAGES = 36
@@ -130,7 +130,7 @@ def main():
         print(f"[gen_diary_page] {char_cn}：无新回信但距上页 {gap:.1f}h，写平常一页。")
 
     llmcore, char_config, persona = setup_ga(args.ga_root, args.actor)
-    sess, sess_name = resolve_char_session(llmcore, args.ga_root, args.actor)
+    sess, sess_name = resolve_session_duty(llmcore, args.ga_root, args.actor)  # 1012: duty门禁选模型
     print(f"[gen_diary_page] {char_cn}(#{me['id']}) 模型≈{sess_name}")
 
     pages = api(args.api, "GET", f"/api/diary/entries?actor_id={me['id']}&limit=2").get("entries", [])

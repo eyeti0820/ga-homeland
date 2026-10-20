@@ -26,7 +26,7 @@ import urllib.request
 BASE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(BASE)
 sys.path.insert(0, BASE)
-from gen_note_reply import setup_ga, resolve_char_session, api, CHAR_NAME, ask_llm, tidy_lines  # noqa: E402
+from gen_note_reply import setup_ga, resolve_char_session, resolve_session_duty, api, CHAR_NAME, ask_llm, tidy_lines  # noqa: E402
 
 DEFAULT_GA_ROOT = "/Users/potato/Library/Application Support/GenericAgent/runtime/app"
 SEEDS = json.load(open(os.path.join(ROOT, "seeds", "moments_seeds.json"), encoding="utf-8"))
@@ -34,27 +34,28 @@ SEEDS_USED_PATH = os.path.join(ROOT, "seeds", "moments_seeds_used.json")
 SEED_REUSE_WINDOW = 10  # 最近用过的N个事件种子不再抽（防同一事件反复发圈）
 
 # 角色关系提示（互评用，简化版；后续可挪进 seeds）
+# 1012: value 尾部追加互称指引(互评B药方)——模型曾把对主人的爱称扣到圈主头上(小猫/宝宝/小墨), 明确给ta"对这个人怎么叫"的出口
 RELATION = {
-    ("xiazhou", "shenxinghui"): "多年搭档，默契但话少，互相信任",
-    ("shenxinghui", "xiazhou"): "多年搭档，默契但话少，互相信任",
-    ("xiazhou", "qiyu"): "熟人，互相看不顺眼又总一起吃饭",
-    ("qiyu", "xiazhou"): "熟人，互相看不顺眼又总一起吃饭",
-    ("lishen", "xiazhou"): "旧识，彼此尊重，说话直接",
-    ("xiazhou", "lishen"): "旧识，彼此尊重，说话直接",
-    ("qinche", "xiazhou"): "道上打过照面，互相警惕又有点欣赏",
-    ("xiazhou", "qinche"): "道上打过照面，互相警惕又有点欣赏",
-    ("lishen", "shenxinghui"): "点头之交，客气但有距离",
-    ("shenxinghui", "lishen"): "点头之交，客气但有距离",
-    ("qiyu", "lishen"): "认识，一个感性一个理性，偶尔互相调侃",
-    ("lishen", "qiyu"): "认识，一个感性一个理性，偶尔互相调侃",
-    ("qiyu", "shenxinghui"): "不熟，只在共同朋友场合见过",
-    ("shenxinghui", "qiyu"): "不熟，只在共同朋友场合见过",
-    ("qinche", "lishen"): "地下诊所打过交道，互欠过人情",
-    ("lishen", "qinche"): "地下诊所打过交道，互欠过人情",
-    ("qiyu", "qinche"): "委托关系认识，互相觉得对方有意思",
-    ("qinche", "qiyu"): "委托关系认识，互相觉得对方有意思",
-    ("shenxinghui", "qinche"): "几乎不认识，只在情报里见过名字",
-    ("qinche", "shenxinghui"): "几乎不认识，只在情报里见过名字",
+    ("xiazhou", "shenxinghui"): "多年搭档，默契但话少，互相信任；你叫他「沈星回」",
+    ("shenxinghui", "xiazhou"): "多年搭档，默契但话少，互相信任；你叫他「夏以昼」，熟稔时可叫「搭档」",
+    ("xiazhou", "qiyu"): "熟人，互相看不顺眼又总一起吃饭；你叫他「祁煜」",
+    ("qiyu", "xiazhou"): "熟人，互相看不顺眼又总一起吃饭；你叫他「夏教官」（带点不服气）",
+    ("lishen", "xiazhou"): "旧识，彼此尊重，说话直接；你叫他「夏以昼」",
+    ("xiazhou", "lishen"): "旧识，彼此尊重，说话直接；你叫他「黎深」或「黎医生」",
+    ("qinche", "xiazhou"): "道上打过照面，互相警惕又有点欣赏；你叫他「夏以昼」",
+    ("xiazhou", "qinche"): "道上打过照面，互相警惕又有点欣赏；你叫他「秦彻」",
+    ("lishen", "shenxinghui"): "点头之交，客气但有距离；你叫他「沈星回」",
+    ("shenxinghui", "lishen"): "点头之交，客气但有距离；你叫他「黎医生」",
+    ("qiyu", "lishen"): "认识，一个感性一个理性，偶尔互相调侃；你叫他「黎医生」",
+    ("lishen", "qiyu"): "认识，一个感性一个理性，偶尔互相调侃；你叫他「祁煜」",
+    ("qiyu", "shenxinghui"): "不熟，只在共同朋友场合见过；你叫他「沈星回」",
+    ("shenxinghui", "qiyu"): "不熟，只在共同朋友场合见过；你叫他「祁煜」",
+    ("qinche", "lishen"): "地下诊所打过交道，互欠过人情；你叫他「黎医生」",
+    ("lishen", "qinche"): "地下诊所打过交道，互欠过人情；你叫他「秦彻」",
+    ("qiyu", "qinche"): "委托关系认识，互相觉得对方有意思；你叫他「秦彻」或「秦老板」",
+    ("qinche", "qiyu"): "委托关系认识，互相觉得对方有意思；你叫他「艺术家」（他是画画的）",
+    ("shenxinghui", "qinche"): "几乎不认识，只在情报里见过名字；你叫他「秦彻」（保持警惕）",
+    ("qinche", "shenxinghui"): "几乎不认识，只在情报里见过名字；你叫他「沈星回」（保持警惕）",
 }
 
 
@@ -168,13 +169,21 @@ def run_post(args, llmcore, char_config, persona):
     if not args.force and any(str(p.get("created_at", "")).startswith(today) for p in recent):
         print(f"[skip] {CHAR_NAME[args.actor]} 今天已发过圈（--force 可覆盖）")
         return 0
-    used_ev = load_seed_used().get(args.actor, [])
-    pool = [e for e in SEEDS[args.actor]["events"] if e not in used_ev] or SEEDS[args.actor]["events"]
-    seed = {"event": random.choice(pool),
-            "mood": random.choice(SEEDS[args.actor]["moods"]),
-            "scene": random.choice(SEEDS[args.actor]["scenes"])}
+    if getattr(args, "free", False):
+        # 1020 周轮值自由发圈: 记忆驱动, 不限于种子命题与近期聊天; 种子池仅作回落
+        ctx = home_context(base)
+        seed = {"event": "（自由命题：从你的记忆、近期心事或生活琐事里挑一件今天真正想说的，不限任何预设命题，也不限于近期聊天）",
+                "mood": "（由你此刻的心情自然决定）",
+                "scene": "（由你想说的事自然带出）"}
+        mem = char_config.recall(ctx[:60] + " 日常心事") or char_config.recall("日常生活 心情")
+    else:
+        used_ev = load_seed_used().get(args.actor, [])
+        pool = [e for e in SEEDS[args.actor]["events"] if e not in used_ev] or SEEDS[args.actor]["events"]
+        seed = {"event": random.choice(pool),
+                "mood": random.choice(SEEDS[args.actor]["moods"]),
+                "scene": random.choice(SEEDS[args.actor]["scenes"])}
+        mem = char_config.recall(seed["event"])
     few_shot = "\n".join(f"- {p['content'][:50]}" for p in recent[:8]) or None
-    mem = char_config.recall(seed["event"])
     prompt = build_post_prompt(persona, mem, few_shot, seed, home_context(base), lore_block(args.lore_file))
 
     print(f"== 发圈任务：{CHAR_NAME[args.actor]} | 种子: {seed['event']} / {seed['mood']} / {seed['scene']}")
@@ -183,7 +192,7 @@ def run_post(args, llmcore, char_config, persona):
         print("== dry-run 结束，未调模型未写库")
         return 0
 
-    sess, _ = resolve_char_session(llmcore, args.ga_root, args.actor)
+    sess, _ = resolve_session_duty(llmcore, args.ga_root, args.actor)  # 1012: duty门禁选模型
     body, ok = "", False
     for attempt in (1, 2):
         body = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess)
@@ -204,12 +213,17 @@ def run_post(args, llmcore, char_config, persona):
         from homeland_ingest import homeland_ingest
         homeland_ingest(char_config, "moment", "朋友圈", "发了新朋友圈动态", content)
         st = load_seed_used()
-        st.setdefault(args.actor, []).append(seed["event"])
-        st[args.actor] = st[args.actor][-SEED_REUSE_WINDOW:]
-        save_seed_used(st)
+        if seed["event"] in SEEDS[args.actor]["events"]:
+            st.setdefault(args.actor, []).append(seed["event"])
+            st[args.actor] = st[args.actor][-SEED_REUSE_WINDOW:]
+            save_seed_used(st)
         ok = True
         break
     if not ok:
+        if getattr(args, "free", False) and not getattr(args, "_fell_back", False):
+            print("[fallback] 自由模式未过门，回落种子池命题模式重试一次")
+            args._fell_back = True
+            return run_post(args, llmcore, char_config, persona)
         print("[giveup] 两次尝试未过相似度/解析门，放弃本次（不写库）")
     return 0
 
@@ -246,7 +260,7 @@ def run_interact(args, llmcore, char_config, persona):
         else:
             own_label = f"【{_on} 发的圈】（注意：这是{_on}的圈，不是你的；主人这条评论默认是对{_on}说的）"
         if sess is None:
-            sess, _ = resolve_char_session(llmcore, args.ga_root, args.actor)
+            sess, _ = resolve_session_duty(llmcore, args.ga_root, args.actor)  # 1012: duty门禁选模型
         mem = char_config.recall(master_c["content"])
         prompt = (tpl.replace("{{persona_self}}", persona[:3000])
                   .replace("{{lore}}", lore_block(args.lore_file))
@@ -291,10 +305,13 @@ def run_cross(args, llmcore, char_config, persona):
     already = any(c.get("actor_id") == aid for c in target.get("comments", []))
     if already:
         print(f"[skip] 已评过 {target['id']}"); return 0
-    tpl = load_tpl("moment_interact.md")
-    cross = tpl[tpl.find("## 角色互评"):] if "## 角色互评" in tpl else tpl
+    full = open(os.path.join(ROOT, "prompts", "moment_interact.md"), encoding="utf-8").read()
+    cross = full[full.find("## 角色互评"):] if "## 角色互评" in full else full
     m = re.search(r"```\n(.*?)\n```", cross, re.S)
-    cross_tpl = m.group(1) if m else tpl
+    if not m:
+        raise SystemExit("[gen_moment] cross 模板缺失（## 角色互评 节）")
+    cross_tpl = m.group(1)
+    # 注：勿用 load_tpl——它只抽文件第一个代码块（interact节），cross节会被静默丢弃导致互评误用主人评论模板(1012排查实锤)
     sess = None
     mem = char_config.recall(target["content"][:60])
     thread = "\n".join(f"{'  ' if c.get('parent_id') else ''}{c.get('author_name','?')}：{c['content']}"
@@ -310,7 +327,7 @@ def run_cross(args, llmcore, char_config, persona):
     print(f"== 互评任务：{CHAR_NAME[args.actor]} → {CHAR_NAME[other]} 的圈：{target['content'][:30]}")
     if args.dry_run:
         print(prompt); return 0
-    sess, _ = resolve_char_session(llmcore, args.ga_root, args.actor)
+    sess, _ = resolve_session_duty(llmcore, args.ga_root, args.actor)  # 1012: duty门禁选模型
     body = ask_llm(llmcore, args.ga_root, args.actor, prompt, sess=sess)
     if body is None:
         return 0
@@ -362,8 +379,8 @@ def run_npc_comment(args, llmcore, char_config):
     print(f"== NPC评论任务：{display} → {CHAR_NAME[args.actor]} 的圈：{target['content'][:30]}")
     if args.dry_run:
         print(prompt); return 0
-    sess, _ = resolve_char_session(llmcore, args.ga_root, "GLM")
-    body = ask_llm(llmcore, args.ga_root, "GLM", prompt, sess=sess)
+    sess, _ = resolve_char_session(llmcore, args.ga_root, "npc_comment")  # 1012: NPC评论改走char_models.json的npc_comment键(Gemini, 主人定: 求活泼)
+    body = ask_llm(llmcore, args.ga_root, "npc_comment", prompt, sess=sess)
     if body is None:
         print("[fail] 模型双渠道失败，NPC 评论不发")
         return 0
@@ -387,6 +404,7 @@ def main():
     ap.add_argument("--ga-root", default=DEFAULT_GA_ROOT)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="当日已发也强制发")
+    ap.add_argument("--free", action="store_true", help="自由发圈模式(1020周轮值): 记忆驱动不限命题, 失败自动回落种子池")
     ap.add_argument("--interact", action="store_true", help="回评主人模式")
     ap.add_argument("--cross", action="store_true", help="互评模式")
     ap.add_argument("--npc-comment", action="store_true", help="剧情NPC评论模式")

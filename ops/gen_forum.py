@@ -458,13 +458,13 @@ def main():
     if modes != 1:
         ap.error("四选一：--npc / --npc-reply / --cross ACTOR / --editor")
 
-    # NPC 与主编走 Gemini 会话（不带任何真实角色 persona）
+    # NPC 与主编走 char_models.json 的 forum 键（1021主人定=Local_gemma，不带任何真实角色 persona）
     if args.npc or args.npc_reply or args.editor:
         ga_root = args.ga_root
         sys.path.insert(0, ga_root)
         try:
             import llmcore  # noqa: F401  (GA 系统内)
-            sess, _ = resolve_char_session(llmcore, ga_root, "Gemini")
+            sess, _ = resolve_char_session(llmcore, ga_root, "forum")
             _ASK_CTX.update(llmcore=llmcore, ga_root=ga_root)
         except Exception as e:
             print(f"[fail] GA llmcore 不可用：{e}（--dry-run 可跳过模型）")

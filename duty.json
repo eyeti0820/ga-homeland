@@ -1,0 +1,5 @@
+{
+ "active_lora": "qinche",
+ "_comment": "每周换LORA三步(必须同批完成防灵魂错位): ①Mac Studio换挂载 ②ga_config/char_models.json: 新角色->Local_char, 旧角色->Gemini ③改本文件active_lora。上号班④日记/⑥论坛马甲、论坛夜班角色帖、都读本文件; 朋友圈/故事/私聊不受此控制",
+ "_updated": "2026-10-12"
+}

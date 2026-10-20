@@ -247,7 +247,7 @@ def main():
             raise SystemExit(f"[gen_story] 故事 {args.story_id} 不存在/未开/不在 cast")
 
     llmcore, char_config, persona = setup_ga(args.ga_root, args.actor)
-    sess, sess_name = resolve_char_session(llmcore, args.ga_root, args.actor)  # 1012: 故事跟随角色主聊天模型(char_models.json); 旧_story固定键退役(备份在temp/bak_1012_qinche_lora)
+    sess, sess_name = resolve_char_session(llmcore, args.ga_root, "_story")  # 1012晚回退: 故事固定走char_models.json的_story键(Gemini), 与角色主聊天模型解耦; LORA只管即时互动, 长文交给Gemini; 换LORA周不用碰故事线
 
     written, skipped, failed = [], [], []
     for cand in duty:

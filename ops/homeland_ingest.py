@@ -5,7 +5,7 @@
   scene_key  : 场景英文key → 拼进 sessionId(如 note/moment/moment_reply/moment_cross/forum_thread/forum_floor/diary)
   scene_cn   : 场景中文名(标签前缀, 如 朋友圈)
   detail     : 一句话场景上下文(谁说了啥/在哪发的/心情)
-  content    : 角色原话全文(直存不总结, 由 char_config 内部截断至4000字)
+  content    : 角色原话全文(直存不总结, char_config 2026-10-20起入库前自动分片≤580c防embed超限)
 失败只打印 [MP], 绝不抛异常影响发帖主流程。
 """
 from datetime import date

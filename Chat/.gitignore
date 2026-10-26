@@ -6,3 +6,6 @@ __pycache__/
 
 # 白名单: 本项目文档入库长期维护(覆盖根.gitignore过程产物排除, 主人1027拍板)
 !*.md
+
+# handoff=session间交接文档,不入库(主人1027定)
+handoff*.md

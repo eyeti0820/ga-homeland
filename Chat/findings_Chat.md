@@ -26,3 +26,9 @@ D1 全媒体复用 / D2 共享世界书 / D3 手写仿微信 / D4 标点切泡(<
 
 ## Open Questions
 - 无阻塞项。二期候选:iOS 推送、轻聊模式、聊天记录导出。
+
+## 2026-10-27 深夜补充
+- **opencode环境事实**:v1.18.30装于`~/.opencode/bin`(不在PATH,调用须全路径);`~/.config/opencode/opencode.json`仅配Zhipu GLM(glm-5.3/glm-5.3-flash,bigmodel coding端点);Go套餐未装;**gstack skill在`~/.config/opencode/skills/gstack/SKILL.md`**可直接用
+- 切泡括号规则本质:意识同步模式括号=大段意识/动作描写,按句号切会刷屏→括号段原子化单泡+灰斜体区分正文;嵌套括号按最外层配对,未闭合从(到末尾整体一泡
+- 背景自定义复杂度:上传+background-image+半透明遮罩≈50行;iOS Safari上传若有坑降级纯色不阻塞主线
+- ⚠Chat/.gitignore的!*.md白名单会捞handoff_Chat.md入库→已追加排除handoff*.md(主人要求handoff不入库)

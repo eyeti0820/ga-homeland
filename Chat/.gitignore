@@ -1,0 +1,4 @@
+chat.db*
+media/
+__pycache__/
+*.log

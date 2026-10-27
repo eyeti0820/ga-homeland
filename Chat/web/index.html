@@ -16,7 +16,8 @@
 html,body{height:100%;height:100dvh;overscroll-behavior:none}html{background:#f7f7f7}
 body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;background:#f7f7f7;color:#111;
      display:flex;justify-content:center}
-#app{width:100%;max-width:720px;height:100%;display:flex;flex-direction:column;position:relative;background:#f7f7f7}
+/* iOS standalone下100dvh不含home条区(1027实测矮~58pt): 改position:fixed钉满整窗, fixed坐标系覆盖unsafe区, 消灭底部死区 */
+#app{width:100%;max-width:720px;position:fixed;top:0;bottom:0;left:0;right:0;margin:0 auto;display:flex;flex-direction:column;background:#f7f7f7}
 /* ---------- 列表屏 ---------- */
 #listScreen{display:flex;flex-direction:column;height:100%}
 .screen-header{background:#ededed;padding:14px 16px 10px;font-size:17px;font-weight:600;text-align:center;

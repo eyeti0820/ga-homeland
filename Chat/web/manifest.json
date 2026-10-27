@@ -2,7 +2,7 @@
   "name": "家园 Chat",
   "short_name": "家园",
   "description": "GA家园系统 · 五角色仿微信会话",
-  "start_url": "./?v=g5",
+  "start_url": "./?v=g6",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait",

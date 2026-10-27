@@ -7,27 +7,33 @@
 给主人一个手机上像微信一样用的私密聊天入口:五角色仿微信 UI、发完即走的异步模式、全媒体(识图/发图/语音条)、共享世界书、记忆照常入宫殿与飞书互通。
 
 ## Current Phase
-**切片1 = M0 骨架 + M1 文字异步闭环 — 未开工**(2026-10-27 立项+深夜拍板完成;开发模式已定 D7:小梅直接开发,一切片一 session,OC 审计后过。下 session 开工入口 = `Chat/handoff_Chat.md` 施工单)
+**切片2 = M2 世界书+记忆验证 — 待开工**(施工单见 `handoff_Chat.md`,不入库)
+
+切片1 已全部完成(2026-10-27,两个 session):
+- 全链路:chatapp.py(FastAPI,127.0.0.1:8789)+web/index.html;launchd com.ga.chatapp 常驻;tailscale serve /chat→8789,手机实测可用(绑127.0.0.1 不暴露0.0.0.0,主人拍板)
+- 验收:五角色回复入库+宫殿 ingest 实证;E2E 32s 回复;B4 围栏不误伤正常回复
+- OC 审计(gstack /review,GLM-5.3):报告归档 `审计_切片1_gstack_1027.md`;🔴S1/S2/S3+🟡B1-B5/B9/B11-B13 已全修;B6/B7/B8/B10 暂缓→记入切片4;豁免区全绿(清洗链路合规)
+- 审计后实测:B5 非dict体→400 拦截✓;/api/chars 合并typing单查询✓;B4正则单测4/4(修复时曾因转义翻车漏检,行下标直替+单测锁定)
 
 ## Phases(= 开发方案 §6 切片;一 session 一切片,D7)
 
 ### 切片1 = M0 骨架 + M1 文字异步闭环(下 session)
-- [ ] lsof 确认 8788 空闲 → chatapp.py FastAPI 骨架(health+静态,chatapp_common 自举+--no-user-tools)
-- [ ] Chat/chat.db 建表(messages/jobs/meta,方案 §4.2)
-- [ ] launchd com.ga.chatapp.plist(照 apiapp 抄)+ bootout/bootstrap 坑规避
-- [ ] tailscale serve 挂 /chat → 127.0.0.1:8788
-- [ ] 手机访问 /health 200 + KeepAlive 自愈验证
-- **Status:** not started
+- [x] chatapp.py FastAPI 骨架(health+静态,chatapp_common 自举+--no-user-tools;实际端口8789,8788让位)
+- [x] Chat/chat.db 建表(messages/jobs/meta,方案 §4.2)
+- [x] launchd com.ga.chatapp.plist 常驻 active
+- [x] tailscale serve 挂 /chat → 127.0.0.1:8789,手机实测✓
+- [x] 手机访问 /health 200 + KeepAlive 自愈✓
+- **Status:** done
 
 ### M1 文字异步闭环(并入切片1)
-- [ ] CharService×5 懒构建(复制 apiapp L77-107 模式,勿 import apiapp)
-- [ ] worker 队列(jobs 表驱动,同角色天然串行,900s abort)
-- [ ] 路由:msg/poll/history/chars
-- [ ] 前端:会话列表屏+聊天屏+气泡+**标点切泡(§5.4:括号段()【】=原子一泡灰斜体不参与合并;其余按句末标点切,<8字并入下段,≤6泡,300ms逐泡弹入)**+typing 动画
-- [ ] 轮询生命周期(2.5s/5s+visibilitychange 暂停)
-- [ ] 验收:锁屏 30s 回复已就位;宫殿 ingest 可查;五角色各通 1 轮;括号描写段单泡不刷屏
-- [ ] 切片收尾(D7):OC+gstack 独立审计→关闭问题→三件套+commit→更新 handoff_Chat.md 进切片2
-- **Status:** not started
+- [x] CharService×5 懒构建(复制 apiapp 模式,勿 import apiapp)
+- [x] worker 队列(jobs 表驱动,同角色天然串行,900s abort)
+- [x] 路由:msg/poll/history/chars(+health)
+- [x] 前端:列表屏+聊天屏+气泡+标点切泡§5.4(括号原子泡灰斜体)+typing 动画
+- [x] 轮询生命周期(2.5s/5s+visibilitychange 暂停+历史加载竞态守卫S1)
+- [x] 验收:锁屏30s回复就位;宫殿ingest可查(chroma镜像实证);五角色各通1轮;括号段单泡✓
+- [x] 切片收尾(D7):OC+gstack审计→S/B问题关闭(B6/B7/B8/B10暂缓入切片4)→三件套+commit→handoff重写
+- **Status:** done
 
 ### 切片2 = M2 世界书+记忆验证
 - [ ] worldbook 读写 API + 热更新已构建 agent
@@ -47,6 +53,7 @@
 - [ ] PWA manifest+添加主屏;历史上滑分页;错误气泡+重发
 - [ ] oMLX 4xx 退避重试;429/超时人话文案
 - [ ] 背景自定义(D8 §5.7:上传图+半透明遮罩+纯色兜底;前面切片有余力可提前)
+- [ ] 审计暂缓项(切片1移交):B6 worker事件唤醒(现5s轮询)/B7 uvicorn直启绕单例锁/B8线程池默认40线程耗尽风险/B10滚动token压缩
 - [ ] 验收:杀进程重启不丢;iPhone 主屏全屏可用;背景功能两端(iOS/桌面)可用
 - **Status:** not started
 

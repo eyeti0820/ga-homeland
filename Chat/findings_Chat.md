@@ -32,3 +32,13 @@ D1 全媒体复用 / D2 共享世界书 / D3 手写仿微信 / D4 标点切泡(<
 - 切泡括号规则本质:意识同步模式括号=大段意识/动作描写,按句号切会刷屏→括号段原子化单泡+灰斜体区分正文;嵌套括号按最外层配对,未闭合从(到末尾整体一泡
 - 背景自定义复杂度:上传+background-image+半透明遮罩≈50行;iOS Safari上传若有坑降级纯色不阻塞主线
 - ⚠Chat/.gitignore的!*.md白名单会捞handoff_Chat.md入库→已追加排除handoff*.md(主人要求handoff不入库)
+
+
+## 2026-10-27 Session 2(切片1审计+修复)
+- **tailscale serve GUI CLIError 是纸老虎**:`serve --bg --https=443 /chat http://127.0.0.1:8789` 命令行直发即成功;写命令报 CLIError≠不能 serve,别被 GUI 吓退
+- **B4 正则转义坑(本次最大翻车)**:在 patch 脚本字符串里写正则,raw 串的 \w 被二次转义成字面反斜杠→围栏永远漏检。教训:补丁里带正则必须跟单测(真错误/代码块结尾/普通回复/无类围栏 4例),用 python 行下标直替比 file_patch 转义更稳
+- **事件循环阻塞三件套**:懒构建(同步3-60s)必须进 asyncio.to_thread;worker 内 DB/LLM 轮询同理;FastAPI sync def 路由会自动进线程池但 async def 里千万别碰同步重活
+- **jobs 表防误杀**:claim 必须带 `WHERE status='pending'` 守卫+rowcount 校验;重启恢复只回收 running(孤儿),pending 是上个进程没抢到的,留给本进程 worker
+- **客户端轮询竞态**:history 拉全量与增量 poll 并发时,用 loadingHistory 标志暂停增量轮询+本地 rendered set 去重,双保险
+- **format_error 特征**:GA agent 错误文本=尾随围栏 ```ExcType: msg @ file:line, fn -> `line` ```,按此识别 agent 内部错误,勿入 messages/宫殿
+- OC/gstack 审计工作流跑通:opencode -e --mode plan + /review,报告落盘后 python 直读全文(stdout 会截断)

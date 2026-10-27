@@ -22,3 +22,13 @@
 - D8背景自定义(主人新增):上传图+rgba白0.75遮罩+纯色兜底,评估~50行一期做→方案§5.7新增
 - 切片划分落定:M0+M1=切片1(下session)/M2=切片2/M3=切片3/M4+背景=切片4→方案§6+task_plan已同步
 - 本轮产出:方案6处patch+task_plan切片化+handoff_Chat.md施工单就位+本commit
+
+
+## 2026-10-27 Session 2(切片1收口:审计+修复+验收+commit)
+- serve 卡点破案:GUI CLIError=误信;用 `tailscale serve --bg --https=443 /chat http://127.0.0.1:8789` 直接成功;服务绑127.0.0.1(不暴露0.0.0.0,主人拍板),手机 /chat 实测全可用
+- OC+gstack 审计(GLM-5.3):报告 `审计_切片1_gstack_1027.md`;1🔴前端(历史×轮询竞态S1)+2🔴后端(事件循环阻塞S2/懒构建冻结S3)+13🟡;豁免区(清洗/tidy_lines/agentmain)全绿=清洗链路合规
+- 修复:chatapp.py 18处(S1守卫/S2合并查询+S3懒构建+worker重活进asyncio.to_thread/B1 claim守卫/B2单事务/B3挂载content/B4错误围栏_ERR_FENCE_RE/B5非dict→400/B13 synchronous=NORMAL)+web 6处(S1/B9服务器ts/B11自误未读/B12 URL编码)
+- B4 惊魂:补丁正则转义翻车(\w写成\w字面)漏检真错误,单测4例抓获→行下标直替+单测锁定→重启复检✓
+- 运行验收:E2E夏以昼32s回复「收到了。」/B5拦截400/chars合并typing/health ok;服务 kickstart 后自动恢复
+- 三件套翻页:切片1→done;B6(worker事件唤醒)/B7(uvicorn直启绕锁)/B8(线程池耗尽)/B10(滚动token压缩)暂缓→切片4清单
+- commit:chatapp.py+web+审计报告+三件套(中文message);handoff_Chat.md 重写=切片2施工单(不入库)

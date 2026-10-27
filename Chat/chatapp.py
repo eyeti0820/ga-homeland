@@ -302,6 +302,131 @@ def _is_typing(char):
 
 # ---------------- M3媒体: 识图/发图/语音条 (2026-10-27, 链路照fsapp成熟方案但不import) ----------------
 _FILE_TAG_RE = re.compile(r"\[FILE:[^\]]+\]")   # 仅文本清洗用; 提取用_extract_files
+
+# ---- S6(1027): 思维链/工具轨迹泄漏清扫 ------------------------------------
+# 实弹(seq46): 正文后拖 /Applications/...char_media.py tts "..." --char=xiazhou 命令行
+# + 英文元叙述(Wait, I need to execute the tool... / Reasoning: 1. Current phase... / Let's run the tool.)
+# 既有清洗只剥<think>等标签对, 无标签叙述直接漏出 → 行级清扫, 中文正文零误伤
+_CMDLINE_RE = re.compile(r"^(?:/[\w./\- ]*?)?(?:python3?|osascript|node)\b")
+_COT_WORDS_RE = re.compile(
+    r"tool|TTS|persona|Reasoning:|Strategy:|Current phase|\bGoal:|system allows|\bexecute\b", re.I)
+
+def _is_en_line(t):
+    """英文行判定: 非空白字符中ASCII字母占比>70% (中文正文必不过门)"""
+    s = "".join(t.split())
+    if not s:
+        return False
+    n = sum(c.isascii() and c.isalpha() for c in s)
+    return n / len(s) > 0.7
+
+def _scrub_cot(text, quiet=False):
+    """行级清扫: ①绝对路径工具命令行 ②英文元叙述行。```围栏内/[FILE:]行不动。"""
+    if not text:
+        return text
+    kept, hits, fence = [], 0, False
+    for ln in text.split("\n"):
+        t = ln.strip()
+        if t.startswith("```"):
+            fence = not fence
+            kept.append(ln)
+            continue
+        if fence or "[FILE:/" in t:
+            kept.append(ln)
+            continue
+        if _CMDLINE_RE.match(t) and (".py" in t or "python" in t.lower() or "--char=" in t or "osascript" in t):
+            hits += 1
+            continue
+        if _is_en_line(t) and _COT_WORDS_RE.search(t):
+            hits += 1
+            continue
+        kept.append(ln)
+    if not hits:
+        return text
+    if not quiet:
+        print(f"[chatapp] CoT清扫: 剔除{hits}行泄漏叙述", flush=True)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+def _scrub_agent_history(char, svc):
+    """洗agent会话史内已入史的泄漏叙述(backend.history=下轮prompt来源), 防二次进prompt"""
+    try:
+        hist = svc.agent.llmclient.backend.history
+    except Exception:
+        return
+    if not isinstance(hist, list):
+        return
+    n = 0
+    for msg in hist:
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        c = msg.get("content")
+        if isinstance(c, str):
+            c2 = _scrub_cot(c, quiet=True)
+            if c2 != c:
+                msg["content"] = c2
+                n += 1
+        elif isinstance(c, list):
+            for blk in c:
+                if isinstance(blk, dict) and blk.get("type") == "text" and isinstance(blk.get("text"), str):
+                    t2 = _scrub_cot(blk["text"], quiet=True)
+                    if t2 != blk["text"]:
+                        blk["text"] = t2
+                        n += 1
+    if n:
+        print(f"[chatapp] {char}: CoT洗史{n}块", flush=True)
+
+
+def _reset_agent_memory(char):
+    """切片7: /new 指令重置角色内存会话史"""
+    svc = SERVICES.get(char)
+    if not svc or not svc.agent:
+        return False
+    try:
+        hist = svc.agent.llmclient.backend.history
+        if isinstance(hist, list):
+            hist.clear()
+            print(f"[chatapp] {char}: agent memory cleared via /new", flush=True)
+            return True
+    except Exception as e:
+        print(f"[chatapp] {char}: reset agent memory error: {e}", flush=True)
+    return False
+
+
+def _remove_agent_history_msg(char, role, content):
+    """切片7: 删除单条消息时同步抹除agent会话内存中的对应条目"""
+    if not content or not isinstance(content, str):
+        return 0
+    svc = SERVICES.get(char)
+    if not svc or not svc.agent:
+        return 0
+    try:
+        hist = svc.agent.llmclient.backend.history
+        if not isinstance(hist, list):
+            return 0
+        removed = 0
+        target = content.strip()
+        i = len(hist) - 1
+        while i >= 0:
+            m = hist[i]
+            if isinstance(m, dict) and m.get("role") == role:
+                mc = m.get("content")
+                matched = False
+                if isinstance(mc, str) and (mc.strip() == target or target in mc):
+                    matched = True
+                elif isinstance(mc, list):
+                    for b in mc:
+                        if isinstance(b, dict) and b.get("type") == "text" and target in str(b.get("text") or ""):
+                            matched = True
+                            break
+                if matched:
+                    hist.pop(i)
+                    removed += 1
+            i -= 1
+        if removed:
+            print(f"[chatapp] {char}: 同步从agent内存清除{removed}条消息 (role={role})", flush=True)
+        return removed
+    except Exception as e:
+        print(f"[chatapp] {char}: remove agent msg error: {e}", flush=True)
+        return 0
 _IMG_EXT = (".jpg", ".jpeg", ".png", ".webp")
 
 
@@ -532,6 +657,10 @@ async def _process_job(job):
             raise TimeoutError(f"agent超时({AGENT_TIMEOUT_SEC}s)已中止")
 
     raw = raw or ""
+    try:   # S6: 洗掉已入史的泄漏叙述(backend.history即下轮prompt来源, 含本轮)
+        _scrub_agent_history(char, svc)
+    except Exception as e:
+        print(f"[chatapp] {char}: CoT洗史失败: {e}", flush=True)
     m = _ERR_FENCE_RE.search(raw)
     if m:   # B4: agent内部错误文本(尾随format_error围栏)不入messages/不入宫殿
         raise RuntimeError(f"agent内部错误: {m.group(1)[:120]}")
@@ -552,7 +681,8 @@ async def _process_job(job):
         raw = raw[:t_i]
 
     # M3: 文本行先入(去掉[FILE:]占位, 媒体单独成行); 再发媒体行; 宫殿注记只随ingest
-    final = build_done_text(_LLM_RUNNING_RE.sub("", _FILE_TAG_RE.sub("", raw))) if raw.strip() else ""
+    _s6 = _scrub_cot(_LLM_RUNNING_RE.sub("", _FILE_TAG_RE.sub("", raw)))   # S6: 无标签英文叙述/命令行清扫
+    final = build_done_text(_s6) if _s6.strip() else ""
     final = (final or "").strip()
     await asyncio.to_thread(_insert_msg, char, "assistant", "text", final or "……")
     mnote = ""
@@ -768,6 +898,57 @@ async def att_del(request: Request):
     return {"deleted": ok}
 
 
+@app.post("/api/msg_del")
+async def msg_del(request: Request):
+    """切片7: 聊天长按删除单条记录(同时抹除DB与agent内存历史)"""
+    try:
+        body = await request.json()
+    except Exception:
+        return _err(400, "请求体不是合法JSON")
+    if not isinstance(body, dict):
+        return _err(400, "请求体须为JSON对象")
+    char = str(body.get("char_id") or "").strip()
+    if char not in CHARS:
+        return _err(400, f"char_id须为: {','.join(CHARS)}")
+    try:
+        seq = int(body.get("seq"))
+    except Exception:
+        return _err(400, "seq必须为整数")
+
+    def _del_msg():
+        with db() as conn:
+            row = conn.execute(
+                "SELECT seq, role, kind, content, media_path FROM messages "
+                "WHERE seq=? AND char_id=?", (seq, char)).fetchone()
+            if not row:
+                return False, None
+            conn.execute("DELETE FROM messages WHERE seq=? AND char_id=?", (seq, char))
+            # 若有关联job还在排队/运行，也做清理
+            conn.execute("DELETE FROM jobs WHERE user_seq=? AND char_id=?", (seq, char))
+            return True, dict(row)
+
+    ok, deleted_row = await asyncio.to_thread(_del_msg)
+    if not ok:
+        return _err(404, "消息不存在或已删除")
+
+    # 联动清理本地媒体文件
+    if deleted_row and deleted_row.get("media_path"):
+        fp = _media_fp(deleted_row["media_path"])
+        if fp and os.path.isfile(fp):
+            try:
+                os.unlink(fp)
+            except Exception:
+                pass
+
+    # 联动清除 agent 内存中对应的对话
+    if deleted_row and deleted_row.get("content"):
+        await asyncio.to_thread(
+            _remove_agent_history_msg, char, deleted_row.get("role"), deleted_row.get("content")
+        )
+
+    return {"ok": True, "seq": seq}
+
+
 @app.post("/api/msg")
 async def post_msg(request: Request):
     try:
@@ -791,6 +972,23 @@ async def post_msg(request: Request):
         return _err(400, "text不能为空")
     if len(text) > 4000:
         return _err(400, "text过长(>4000)")
+
+    # 切片7: 拦截 /new 指令重置当前角色的短期会话记忆
+    if text.lower() == "/new" and not image_seqs:
+        ts = time.time()
+        # 清除进程内 agent 记忆
+        await asyncio.to_thread(_reset_agent_memory, char)
+        # 写入一条灰色居中系统提示行（kind='system'）
+        def _store_sys():
+            with db() as conn:
+                cur = conn.execute(
+                    "INSERT INTO messages(char_id, role, kind, content, ts) "
+                    "VALUES (?, 'system', 'system', '—— 上下文已重置，开启新会话 ——', ?)",
+                    (char, ts))
+                return cur.lastrowid
+        seq = await asyncio.to_thread(_store_sys)
+        return JSONResponse({"ok": True, "is_new": True, "seq": seq, "ts": ts}, status_code=200)
+
     if image_seqs:   # M3: 校验图片归属(本角色/用户/image_in行), 防跨角色串图
         with db() as conn:
             q = ",".join("?" * len(image_seqs))
@@ -1094,16 +1292,19 @@ async def bg_set(request: Request):
         if f is None or isinstance(f, str):
             return _err(400, "image模式须携带file字段")
         raw = await f.read()
-        if not raw or not raw.startswith((b"\xff\xd8\xff", b"\x89PNG")):
-            return _err(400, "背景图仅支持jpg/png")
+        is_jpg = raw.startswith(b"\xff\xd8\xff")
+        is_png = raw.startswith(b"\x89PNG")
+        is_webp = raw.startswith(b"RIFF") and len(raw) >= 12 and raw[8:12] == b"WEBP"
+        if not raw or not (is_jpg or is_png or is_webp):
+            return _err(400, "背景图仅支持jpg/png/webp")
         if len(raw) > 8 * 1024 * 1024:   # 审计P1-1: 读后限长, 恶意块头谎报length时兜底
             return _err(413, "背景图过大(>8MB)")
 
         def _save_bg():
             d = os.path.join(MEDIA_DIR, "bg")
             os.makedirs(d, exist_ok=True)
-            name = f"bg_{int(time.time() * 1000)}." + (
-                "png" if raw[:4] == b"\x89PNG" else "jpg")
+            ext = "webp" if is_webp else ("png" if is_png else "jpg")
+            name = f"bg_{int(time.time() * 1000)}.{ext}"
             with open(os.path.join(d, name), "wb") as w:
                 w.write(raw)
             return name

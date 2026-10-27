@@ -68,3 +68,50 @@
 - **真bug(GC时序)**: 原 keep=_bg_referenced() 在 _meta_set **之前**算,旧图永远在 keep 里→换图只积不删,"只留最新一张"从未成立; 改为**落库后算引用+无条件GC**(none 退役时旧图也回收), _gc_bg 加 isdir 防御
 - **验证**: py_compile/node --check/API(bg_all 五桶+color 400)/浏览器 DataTransfer 全链路: 选chip→#bgImgFile.files 赋值+change→POST落库→分桶隔离(秦彻不动)→祁煜屏真上屏(url(#f5f5f5 bg_*.png))→复原 none→GC 两轮把孤儿图清到目录空
 - **坑**: ①多刀手术先行删行会使后续行号位移,函数定位用"首行 startswith+尾行 endswith"}"动态找,别信旧行号; ②endswith 判据注意分号在引号内('none';} 不是 'none'}); ③DataTransfer 模拟上传要赋给真 file input(#bgImgFile),触发按钮(#bgImgBtn)没有 files 器官; ④bgMode('image')=直接弹文件选择框,bgImgBtn 只是 image 态的换图入口,不是上传必经路
+
+
+### 切片6热修(1027傍晚): 五角色聊天互串修复
+- **现象**: 主人报每个角色聊天里都串了其他角色消息
+- **排查**: 三层验尸定位——DB messages 按 char_id 分组归属全对 / history API 三桶返回全对 → 病灶在前端; git diff c38f46f..b1b45ae 逐行审出真凶
+- **根因**: 切片5 换头像时, openChat 里插入头像行的**相邻清理行被误删**(`$('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;`) → 切角色不清屏, 上一角色消息残留叠加
+- **修复**: 清理行原样缝回(commit adb82e9, 1 insertion), 行内加"热修1027"注释防再误删
+- **验证**: 浏览器 reload 后 openChat('lishen')→msgArea 2条全黎深; openChat('qiyu')→清屏后 8 条全祁煜(data-seq/头像/内容三重验), 零残留
+- **坑**: 改模板相邻行时整行功能语句会被顺手吞掉; commit 前应逐行 diff 审"被删的行", 不能只看新增(教训入库)
+
+
+## 2026-10-27 Session 6 (切片6: UI精细化打磨 + 思维链/工具轨迹泄漏行级清扫 + seq46洗库)
+- **起因**: 主人验收切片5提出 4 项精调 + 偶现思维链/命令行泄漏（夏以昼 seq46 带 `/Applications/.../char_media.py tts...` + `Wait, I need to...` + `Reasoning:` + `Let's run the tool.`）。
+- **思维链/命令行行级清扫 (`chatapp.py`)**:
+  - 根因：`build_done_text`/`clean_reply` 仅剥除成对 XML 标签（`<think>` 等），对模型裸流出的 CLI 命令、英文 CoT 叙述（`Wait`、`Reasoning:`、`Strategy:` 等）无感知；且 agent 内部历史（`llmclient.backend.history`）残留该 assistant 文本，后续轮次作为 prompt 再次污染上下文。
+  - `_scrub_cot(text)`: 行级清扫引擎；跳过 ``` 围栏块；跳过含真媒体标签 `[FILE:/` 行；命令行正则 `_CMDLINE_RE = ^(?:/[\w./\- ]*?)?(?:python3?|osascript|node)` 精确命中 CLI 串；英文行门限（ASCII 字符数/总长 > 70%）+ 12 组 CoT 关键词（`tool|tts|persona|reasoning|strategy|current phase|goal|execute|wait|let's run|let me|system allows`，大小写不敏感）组合门，彻底剥除泄漏叙述。
+  - `_scrub_agent_history(char_id, scrubbed)`: 在 job 产出后，深入当前角色常驻 agent 的 `llmclient.backend.history`，逆序命中最新一条 `role=assistant` 的 content，原地回写清扫后的纯净文本，彻底斩断历史向后滚动的二次污染。
+  - 单测覆盖：正弹 seq46（原 912 字符）清扫后 8 行泄漏叙述全部剔除；负样本（合法单行/带[FILE:/]真图/合法Python代码块/中文提问）100% 保护不误伤；`osascript` 裸命令与 `[FILE:]` 提及文本两处边界均单测锁定。
+- **UI 精调 (`web/index.html`)**:
+  - 气泡行距放大：`.row` margin 由 `6px 0` 扩大到 `14px 0`，留白呼吸感提升。
+  - 气泡间距：多气泡组 `.bubbles` 内间距由 `4px` 放大到 `6px`。
+  - 括号心理描写卡片化：`.bubble.paren` 彻底告别灰色斜体！重构为**手帐纸纹轻卡片**——奶油底色渐变（`linear-gradient(135deg, #fdfaf2, #f4ecd8)`）+ 极细纸纤维斜纹质感（`repeating-linear-gradient(45deg, rgba(180,145,95,.04)...)`）+ 极淡金棕边框（`#e3d5be`）+ 深棕文字（`#6b5a43`）+ 行高 1.95，视觉沉浸柔和。
+  - 语音条白底奶油红胶囊：退役原生 `<audio controls>` 粗苯控件，重构为轻拟物高阶播放器——
+    - 结构：`vbtn`（播放/暂停 28px 圆扭）+ `vtrack`（轨道条 + `vfill` 动态进度）+ `vdur`（时长数字）。
+    - 调色：角色侧（默认）白底背景 + 柔和阴影 + 奶油豆沙红主色（`#D89E94`，播放按钮底色与进度条填充）；用户侧（绿底气泡）自动反转为白透按钮与白高光轨道，层次分明。
+    - 交互：多音频互斥（播放当前自动暂停上一条）、点击轨道进度跳转（seek）、播放结束自恢复初始态。
+- **历史数据洗净 (Retro)**:
+  - 生产库 `seq=46` 实弹备份至 `retro_seq46_backup.json`（912B）。
+  - 通过 `_scrub_cot` 现场洗涤后 `UPDATE messages SET content`，将历史坏行原位清洗为仅留正文（"嗯？这个“gggb”……"），前端再刷新绝无污染。
+  - 宫殿侧因无单个 ingest 记录的 delete API（仅有 `ingest` 与 `recall`），为避免侵入 GA 核心宫殿表，保留现状并在文档备忘。
+- **部署与验证**:
+  - `launchctl kickstart -k gui/$(id -u)/com.ga.chatapp`，新进程 PID `29584`（绑定 127.0.0.1:8789）。
+  - HTTP 活体冒烟验证：`GET /` (HTTP 200, 30973B)，确认包含 `vbtn`、`repeating-linear-gradient`、`margin:14px 0`；`GET /api/config` 正常返回各角色背景配置。
+- **代码变动**:
+  - `chatapp.py.bak_s6` 备份完成；`web/index.html.bak_s5` 备份完成。
+
+## 切片 6.1: UI细节打磨 & 背景更换缺陷修复 (2026-10-27)
+- 气泡排版微调:
+  - `.bubbles` 纵向间距从 `6px` 放大到 `8px`。
+  - 气泡全面实现内容自适应宽度 (`width:fit-content; max-width:100%`)，短句小气泡、长文大面板，彻底告别等宽死板感。
+- 括号心境卡片重塑 (仿复古羊皮笔记本):
+  - 改用水平横向等距信纸线条 (`repeating-linear-gradient(180deg, ... 27px 28px)`)。
+  - 左侧加入复古书脊装订边线 (`border-left: 3px solid #c9b48c`) 与内嵌边距，呈现真实手帐/笔记本装订页感。
+- 手机端/桌面端键盘换行体验:
+  - 移除回车直接发送拦截，回车键恢复为自然提行并联动高度自适应，仅点击右下角发送按钮外发。
+- 会话背景更换机制修复:
+  - 解决第二次更换背景显示旧图问题: 移除上传中提前覆写空 value 的死锁；文件选择框追加值重置，支持连续重复选取同名图片；为 URL 追加更新时间戳破除浏览器静态强缓存。

@@ -154,9 +154,11 @@ class CharService:
                     persona = self.ctx.load_persona()
                     if persona:
                         agent.extra_sys_prompts.append(persona)
+                    _apply_worldbook(agent)   # M2: persona之后注入共享世界书(读meta; 无则不注入)
                     self.ctx.apply_model(agent)
                     threading.Thread(target=agent.run, daemon=True).start()
                     self.agent = agent
+                    _apply_worldbook(agent)   # 竞态自愈: 构建期间若世界书被热更, 落成时再校一次
                     print(f"[chatapp] {self.char}: agent ready", flush=True)
                 except Exception as e:
                     self.build_error = str(e)
@@ -174,6 +176,51 @@ def _svc(char):
     if svc is None:
         svc = SERVICES.setdefault(char, CharService(char))
     return svc
+
+
+# ---------------- M2 共享世界书(meta表持久化 + 已构建agent热更新) ----------------
+
+WORLDBOOK_KEY = "worldbook"
+WORLDBOOK_TAG = "[共享世界书]"
+
+
+def get_worldbook():
+    with db() as conn:
+        r = conn.execute("SELECT value FROM meta WHERE key=?", (WORLDBOOK_KEY,)).fetchone()
+    return r["value"] if r else ""
+
+
+def set_worldbook(text):
+    with db() as conn:
+        conn.execute("INSERT INTO meta(key, value) VALUES(?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                     (WORLDBOOK_KEY, text))
+
+
+def _apply_worldbook(agent):
+    """把最新世界书同步进agent.extra_sys_prompts: 替换旧段/新增/清空即删段.
+    agentmain.run 每次task重组sys_prompt都重读该列表(2026-10-27核实), 故热更新下一轮即生效."""
+    text = get_worldbook().strip()
+    prompts = agent.extra_sys_prompts
+    out, replaced = [], False
+    for p in prompts:
+        if isinstance(p, str) and p.startswith(WORLDBOOK_TAG):
+            if text and not replaced:
+                out.append(WORLDBOOK_TAG + "\n" + text)
+                replaced = True
+            # 旧[共享世界书]段一律丢弃(空=删除; 多段收敛为一段)
+        else:
+            out.append(p)
+    if text and not replaced:
+        out.append(WORLDBOOK_TAG + "\n" + text)
+    prompts[:] = out
+    return len(prompts)
+
+
+def _hot_update_worldbook():
+    """保存后同步所有已构建agent; 未构建角色在get_agent时注入(含构建期竞态自愈)"""
+    return sum(1 for svc in list(SERVICES.values())   # S1: 快照迭代, 防worker并发setdefault致RuntimeError
+               if svc.agent is not None and _apply_worldbook(svc.agent))
 
 
 # ---------------- worker(jobs表驱动, 每角色一个串行worker) ----------------
@@ -414,6 +461,27 @@ def history(char_id: str = "", before_seq: int = 0, limit: int = 50):
                 (char_id, limit)).fetchall()
     rows.reverse()
     return {"msgs": [_msg_dict(r) for r in rows]}
+
+
+@app.get("/api/worldbook")
+def worldbook_get():
+    """M2: 世界书(五角色共享一份)"""
+    return {"worldbook": get_worldbook()}
+
+
+@app.put("/api/worldbook")
+async def worldbook_put(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return _err(400, "body须为JSON")
+    if not isinstance(body, dict) or "worldbook" not in body or not isinstance(body["worldbook"], str):
+        return _err(400, "body须为 {\"worldbook\": 文本}(空串=清空,须显式传键)")
+    text = body["worldbook"]
+    await asyncio.to_thread(set_worldbook, text)
+    updated = await asyncio.to_thread(_hot_update_worldbook)
+    print(f"[chatapp] worldbook已保存({len(text)}字), 热更新{updated}个agent", flush=True)
+    return {"ok": True, "updated_agents": updated}
 
 
 @app.get("/")

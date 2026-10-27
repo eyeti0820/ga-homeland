@@ -42,3 +42,12 @@ D1 全媒体复用 / D2 共享世界书 / D3 手写仿微信 / D4 标点切泡(<
 - **客户端轮询竞态**:history 拉全量与增量 poll 并发时,用 loadingHistory 标志暂停增量轮询+本地 rendered set 去重,双保险
 - **format_error 特征**:GA agent 错误文本=尾随围栏 ```ExcType: msg @ file:line, fn -> `line` ```,按此识别 agent 内部错误,勿入 messages/宫殿
 - OC/gstack 审计工作流跑通:opencode -e --mode plan + /review,报告落盘后 python 直读全文(stdout 会截断)
+
+
+## 2026-10-27 Session 3(切片2坑)
+- **前端补丁验证必先 reload**:浏览器tab若在补丁前加载,JS函数还是旧版→测试假失败(S2首测弹窗仍开,location.reload后绿)。改 index.html 后任何页面内测试先重载
+- **kickstart 重启清空懒构建agent**:`updated_agents:0`≠坏,是SERVICES空;先发1条消息重建agent再PUT验热更
+- **apiapp(8787) API Key 结构**:ga_config/api_keys.json = {sk-ga-*: 属主角色名};选 value==目标角色 的键,Bearer直发 /v1/chat/completions
+- **OC审计标准姿势**:subprocess.Popen(cwd=repo,stdout=log文件,start_new_session=True)防管道阻塞;完成判据=进程退出+log稳定;报告去ANSI(re\x1b)再归档,python直读全文
+- **桥接验证方法论**:跨通道记忆测试用"暗号"三步——通道A告知→查宫殿入库(source字段)→通道B(apiapp curl)提问;勿信单通道自证
+- **curl -w %{http_code} 拼接易翻车**:python侧直接用 urllib.request 更稳(还能顺手json.loads)

@@ -7,7 +7,12 @@
 给主人一个手机上像微信一样用的私密聊天入口:五角色仿微信 UI、发完即走的异步模式、全媒体(识图/发图/语音条)、共享世界书、记忆照常入宫殿与飞书互通。
 
 ## Current Phase
-**切片2 = M2 世界书+记忆验证 — 待开工**(施工单见 `handoff_Chat.md`,不入库)
+**切片3 = M3 媒体三件 — 待开工**(施工单见 `handoff_Chat.md`,不入库)
+
+切片2 已全部完成(2026-10-27):
+- worldbook GET/PUT+meta表持久化+已构建agent热更新(_apply_worldbook)+未构建角色构建期注入;前端📖弹窗(加载/编辑/保存/toast);calcBase修复(/chat与/chat/双验9/9)
+- 验收全过:改书下轮生效(E2E双角色命中)+重启持久;中文引号/换行不炸;**宫殿桥接实锤**:Chat告夏以昼暗号"珊瑚海之约"→宫殿入库(source=wechat:chatapp)→apiapp 8787跨通道答上=记忆三通道互通闭环
+- OC 审计(gstack):报告归档 `审计_切片2_gstack_1027.md`;🔴S1(迭代竞态→快照)/🔴S2(加载失败仍开弹窗→catch return)/🟡A1(缺键静默清空→400)全修并实弹验证;无暂缓项
 
 切片1 已全部完成(2026-10-27,两个 session):
 - 全链路:chatapp.py(FastAPI,127.0.0.1:8789)+web/index.html;launchd com.ga.chatapp 常驻;tailscale serve /chat→8789,手机实测可用(绑127.0.0.1 不暴露0.0.0.0,主人拍板)
@@ -36,10 +41,11 @@
 - **Status:** done
 
 ### 切片2 = M2 世界书+记忆验证
-- [ ] worldbook 读写 API + 热更新已构建 agent
-- [ ] UI 世界书编辑框(五角色共享一份)
-- [ ] 验收:改世界书下轮生效;飞书侧能"想起"本通道聊的内容(宫殿桥接实锤)
-- **Status:** not started
+- [x] worldbook 读写 API + 热更新已构建 agent(S1快照迭代修复)
+- [x] UI 世界书编辑框(五角色共享一份;S2加载失败不开弹窗;A1缺键400)
+- [x] 验收:改世界书下轮生效;飞书侧能"想起"本通道聊的内容(宫殿桥接实锤,apiapp跨通道答上暗号)
+- [x] 切片收尾(D7):OC+gstack审计→S1/S2/A1全修无暂缓→三件套+commit→handoff重写
+- **Status:** done
 
 ### 切片3 = M3 媒体三件
 - [ ] 主人发图:upload+GLM 识图注入(native_oai_config10,chat() 生成器坑)

@@ -65,12 +65,22 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
 #sendBtn:disabled{background:#9fd6b5}
 #toast{position:fixed;top:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;
   font-size:14px;border-radius:8px;padding:10px 18px;display:none;z-index:99}
+#wbBtn{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:19px;cursor:pointer;line-height:1}
+.screen-header{position:relative}
+#wbScreen{position:fixed;inset:0;background:#fff;display:none;flex-direction:column;z-index:50}
+#wbText{flex:1;margin:12px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px;
+  line-height:1.6;resize:none;font-family:inherit;outline:none}
+#wbBar{display:flex;gap:10px;padding:0 12px 14px}
+#wbBar button{flex:1;border:none;border-radius:6px;padding:11px 0;font-size:16px}
+#wbCancel{background:#f2f2f2;color:#111}
+#wbSave{background:#07c160;color:#fff}
+#wbSave:disabled{background:#9fd6b5}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="listScreen">
-    <div class="screen-header">Chat</div>
+    <div class="screen-header">Chat<span id="wbBtn" onclick="openWb()">📖</span></div>
     <div class="searchbox"><input id="searchInput" placeholder="搜索" oninput="renderList()"></div>
     <div id="charList"></div>
   </div>
@@ -89,6 +99,12 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
   </div>
 </div>
 <div id="toast"></div>
+<div id="wbScreen">
+  <div class="screen-header"><span onclick="closeWb()" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:26px;cursor:pointer;line-height:1">‹</span>共享世界书</div>
+  <textarea id="wbText" placeholder="五角色共享的世界设定, 保存后下一轮回复生效"></textarea>
+  <div id="wbBar"><button id="wbCancel" onclick="closeWb()">取消</button>
+  <button id="wbSave" onclick="saveWb()">保存</button></div>
+</div>
 <script>
 'use strict';
 const CHARS=[
@@ -112,9 +128,32 @@ function fmtTime(ts){const d=new Date(ts*1000),n=new Date();
   if(d.toDateString()===n.toDateString())return hm;
   return (d.getMonth()+1)+'-'+d.getDate()+' '+hm}
 function toast(t){const el=$('toast');el.textContent=t;el.style.display='block';setTimeout(()=>el.style.display='none',2200)}
-const BASE=location.pathname.replace(/[^/]*$/,'').replace(/\/$/,'');
+/*BASE:BEGIN 单测标记: temp下node提取本段测试, 改动须同步单测*/
+function calcBase(pathname){
+  let p=pathname.replace(/\/+$/,'');                 /* 剥尾斜杠: /chat/ -> /chat */
+  const last=p.substring(p.lastIndexOf('/')+1);
+  if(last && last.indexOf('.')>=0) p=p.substring(0,p.lastIndexOf('/')); /* 末段像文件名才剥: /index.html -> '' */
+  return p;
+}
+const BASE=calcBase(location.pathname);
+/*BASE:END*/
 async function api(path,opt){const r=await fetch(BASE+path,Object.assign({headers:{'Content-Type':'application/json'}},opt||{}));
   if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||('HTTP '+r.status));return r.json()}
+
+/* ---------- M2 世界书(五角色共享一份) ---------- */
+async function openWb(){
+  try{const r=await api('/api/worldbook');$('wbText').value=r.worldbook||''}
+  catch(e){toast('世界书加载失败');return}
+  $('wbScreen').style.display='flex';
+}
+function closeWb(){$('wbScreen').style.display='none'}
+async function saveWb(){
+  const btn=$('wbSave');btn.disabled=true;btn.textContent='保存中…';
+  try{await api('/api/worldbook',{method:'PUT',body:JSON.stringify({worldbook:$('wbText').value})});
+      toast('已保存, 下一轮回复生效');closeWb()}
+  catch(e){toast('保存失败: '+e.message)}
+  finally{btn.disabled=false;btn.textContent='保存'}
+}
 
 /* ---------- 切泡 §5.4 ---------- */
 const OPEN_CLOSE={'(':')','（':'）','【':'】','[':']'};

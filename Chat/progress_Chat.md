@@ -32,3 +32,12 @@
 - 运行验收:E2E夏以昼32s回复「收到了。」/B5拦截400/chars合并typing/health ok;服务 kickstart 后自动恢复
 - 三件套翻页:切片1→done;B6(worker事件唤醒)/B7(uvicorn直启绕锁)/B8(线程池耗尽)/B10(滚动token压缩)暂缓→切片4清单
 - commit:chatapp.py+web+审计报告+三件套(中文message);handoff_Chat.md 重写=切片2施工单(不入库)
+
+
+## 2026-10-27 Session 3(切片2收口:世界书+桥接+审计+修复+commit)
+- 施工:worldbook GET/PUT(meta表)+_apply_worldbook热更+构建期注入;前端📖弹窗;calcBase修复(无尾斜杠BASE误剥空→保留目录前缀,9/9)
+- E2E:v1星轨夜市命中(seq18)→PUT蓝洞v2→qiyu追问+shenxinghui新构建双命中;中文引号/换行/emoji不炸
+- **宫殿桥接实锤**:Chat告夏以昼暗号"珊瑚海之约"→宫殿2条入库(source=wechat:chatapp)→apiapp 8787跨通道(8787 key=ga_config/api_keys.json,键值=属主角色名)答上→D5设计闭环
+- OC+gstack审计(GLM-5.3):报告`审计_切片2_gstack_1027.md`;🔴S1热更迭代SERVICES竞态(list快照)/🔴S2加载失败仍开弹窗致空覆盖(catch return)/🟡A1缺worldbook键静默清空(400)——全修实弹验证(updated_agents=1/mock fetch弹窗none/400文案)
+- 验收:重启持久✓/chars健康✓/9项回归全绿
+- 三件套翻页:切片2→done,Current Phase→切片3;handoff重写=切片3施工单(不入库)

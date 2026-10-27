@@ -11,13 +11,23 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/192.png">
 <link rel="apple-touch-icon" href="icons/180.png">
 <title>Chat</title>
+<script>
+document.documentElement.classList.toggle('standalone',
+  matchMedia('(display-mode: standalone)').matches || navigator.standalone === true);
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;height:100dvh;overscroll-behavior:none}html{background:#f7f7f7}
+html,body{height:100%;height:100dvh;overscroll-behavior:none;overflow:hidden}html{background:#f7f7f7}
 body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;background:#f7f7f7;color:#111;
      display:flex;justify-content:center}
-/* iOS standalone下100dvh不含home条区(1027实测矮~58pt): 改position:fixed钉满整窗, fixed坐标系覆盖unsafe区, 消灭底部死区 */
-#app{width:100%;max-width:720px;position:fixed;top:0;bottom:0;left:0;right:0;margin:0 auto;display:flex;flex-direction:column;background:#f7f7f7}
+/* PWA uses an explicit viewport height rather than fixed inset geometry.
+   Do not add screen.height deltas: native status bars need not belong to the page. */
+html.standalone,html.standalone body{height:100vh}
+#app{width:100%;max-width:720px;height:100%;min-height:0;position:relative;margin:0 auto;display:flex;flex-direction:column;background:#f7f7f7}
+html.keyboard-open #app{height:var(--keyboard-height);top:var(--keyboard-page-top);bottom:auto}
+html.keyboard-open #wbScreen{height:var(--keyboard-height);top:var(--keyboard-top);bottom:auto}
+html.keyboard-open #inputBar{padding-bottom:8px}
+#listScreen,#chatScreen,#msgArea,#charList{min-height:0}
 /* ---------- 列表屏 ---------- */
 #listScreen{display:flex;flex-direction:column;height:100%}
 .screen-header{background:#ededed;padding:14px 16px 10px;font-size:17px;font-weight:600;text-align:center;
@@ -729,27 +739,43 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollOnce(
 refreshDigest();applyBg();fetchBgCfg();
 </script>
 <script>
-/* 视口排障HUD(灰缝案1027,结案后整段移除): 左上角常显小字 */
+/* Viewport sizing: CSS owns idle height; JS only follows an actual keyboard shrink. */
 (function(){
-  var BUILD='hud3-m6';
-  var hud=document.createElement('div');
-  hud.style.cssText='position:fixed;left:3px;top:3px;z-index:99999;font:10px/1.4 -monospace,monospace;background:rgba(0,0,0,.68);color:#7fff7f;padding:5px 7px;border-radius:6px;white-space:pre;pointer-events:none;max-width:72vw;overflow:hidden';
-  var dp=document.createElement('div');dp.style.cssText='position:absolute;height:100dvh;width:0;visibility:hidden';
-  var sb=document.createElement('div');sb.style.cssText='position:fixed;top:env(safe-area-inset-bottom,0px);left:0;width:0;height:0;visibility:hidden';
-  function upd(){
-    var app=document.getElementById('app');
-    if(!app){setTimeout(upd,300);return;}
-    var r=app.getBoundingClientRect();
-    var dm=matchMedia('(display-mode: standalone)').matches?'SA':'BR';
-    hud.textContent=BUILD+' ['+dm+' '+getComputedStyle(app).position+']\n'
-      +'iH'+innerHeight+' oH'+outerHeight+' sH'+screen.height+'x'+screen.width+'@'+devicePixelRatio+'\n'
-      +'vv'+Math.round(visualViewport.height)+' sc'+visualViewport.scale.toFixed(2)+' dvh'+Math.round(dp.getBoundingClientRect().height)+' sb'+Math.round(sb.getBoundingClientRect().top)+'\n'
-      +'appB'+Math.round(r.bottom)+' gap'+Math.round(innerHeight-r.bottom);
+  const root=document.documentElement,vv=window.visualViewport;
+  if(!vv)return;
+  let baseline=vv.height,keyboard=false,frame=0;
+  const editing=()=>document.activeElement && document.activeElement.matches('input:not([type=file]),textarea,[contenteditable=true]');
+  function sync(){
+    frame=0;
+    // A pinch zoom or the normal PWA status bar difference is not a keyboard.
+    if(Math.abs(vv.scale-1)>0.02)return;
+    const shrunk=baseline-vv.height>120;
+    const wasKeyboard=keyboard;
+    keyboard=shrunk && (editing() || keyboard);
+    root.classList.toggle('keyboard-open',keyboard);
+    if(keyboard){
+      root.style.setProperty('--keyboard-height',vv.height+'px');
+      root.style.setProperty('--keyboard-top',vv.offsetTop+'px');
+      // #app is in document flow: offsetTop alone loses Safari's focus scroll.
+      // The fixed worldbook overlay above still uses layout-viewport coordinates.
+      root.style.setProperty('--keyboard-page-top',(vv.pageTop ?? (scrollY+vv.offsetTop))+'px');
+    }else if(!editing()){
+      baseline=vv.height;
+      root.style.removeProperty('--keyboard-height');
+      root.style.removeProperty('--keyboard-top');
+      root.style.removeProperty('--keyboard-page-top');
+    }
+    if(wasKeyboard && !keyboard)window.scrollTo(0,0);
   }
-  function init(){document.body.appendChild(hud);document.body.appendChild(dp);document.body.appendChild(sb);upd();
-    addEventListener('resize',upd);if(visualViewport.addEventListener)visualViewport.addEventListener('resize',upd);setInterval(upd,1000);}
-  if(document.readyState==='loading')addEventListener('DOMContentLoaded',init);else init();
+  function schedule(){if(!frame)frame=requestAnimationFrame(sync);}
+  vv.addEventListener('resize',schedule);vv.addEventListener('scroll',schedule);
+  addEventListener('resize',schedule);addEventListener('pageshow',schedule);
+  addEventListener('scroll',schedule,{passive:true});
+  document.addEventListener('focusin',schedule);document.addEventListener('focusout',schedule);
+  document.addEventListener('visibilitychange',schedule);
+  sync();
 })();
+
 </script>
 </body>
 </html>

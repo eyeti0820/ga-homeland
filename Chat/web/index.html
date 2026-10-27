@@ -395,6 +395,10 @@ function renderList(){
 }
 async function refreshDigest(){
   try{const r=await api('/api/chars');digest=r.chars.map(c=>({...c,id:c.char_id}));
+    /* 清库1027-A: 首次安装/清缓存后 LS_READ 为空 → 以当前 last_seq 播种已读基线, 防全局递增seq被当成海量未读红标 */
+    if(!localStorage.getItem(LS_READ)){
+      try{const base={};digest.forEach(c=>{base[c.id]=c.last_seq||0});localStorage.setItem(LS_READ,JSON.stringify(base))}catch(e){}
+    }
     digest.forEach(c=>{if(CMAP[c.id])Object.assign(CMAP[c.id],c)});   /* 切片5: 回写avatar等字段 */
     if(!activeChar)renderList();
     else{const d=digest.find(x=>x.char_id===activeChar);
@@ -494,6 +498,10 @@ async function openChat(cid){
       applyMsgs(cid,r.msgs,false);
       // 写入骨架秒开缓存(只留最新50条)
       try{localStorage.setItem(LS_CACHE_PREFIX+cid,JSON.stringify(r.msgs.slice(-50)))}catch(e){}
+    }else if(cid===activeChar){
+      /* 清库1027-B: 服务端已无该角色消息(如清库后) → 清空DOM与本地骨架缓存, 防旧消息幽灵常驻屏幕 */
+      $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;
+      try{localStorage.removeItem(LS_CACHE_PREFIX+cid)}catch(e){}
     }
     $('typingHint').style.display='none';
   }catch(e){toast('加载失败');   /* 审计P2-1: 历史失败改拉全量, 防since=0把最旧200条当新消息渲染 */

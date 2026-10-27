@@ -532,6 +532,21 @@ async def _process_job(job):
     if m:   # B4: agent内部错误文本(尾随format_error围栏)不入messages/不入宫殿
         raise RuntimeError(f"agent内部错误: {m.group(1)[:120]}")
 
+    # 1027fix(主人报): 上游LLM/工具错误原文("!!!Error: HTTP 400 oMLX prefill...")被模型整段复读
+    # 或工具轨迹("🛠️ Tool:"...)喷出 → 错误不入库(转system提示), 轨迹只保留其前真实文本;
+    # 报错前先尽力发媒体(工具可能已成功产出图/语音, 与文本失败解耦)
+    e_i = raw.find("!!!Error:")
+    t_i = raw.find("🛠️ Tool:")
+    if e_i >= 0 or t_i >= 0:
+        try:
+            await asyncio.to_thread(_emit_reply_media, char, raw, start - 2)
+        except Exception as e:
+            print(f"[chatapp] {char}: 错误前媒体抢救失败: {e}", flush=True)
+        if e_i >= 0:
+            detail = " ".join(raw[e_i + 9:e_i + 309].split())[:200]
+            raise RuntimeError(f"上游模型错误: {detail}")
+        raw = raw[:t_i]
+
     # M3: 文本行先入(去掉[FILE:]占位, 媒体单独成行); 再发媒体行; 宫殿注记只随ingest
     final = build_done_text(_LLM_RUNNING_RE.sub("", _FILE_TAG_RE.sub("", raw))) if raw.strip() else ""
     final = (final or "").strip()

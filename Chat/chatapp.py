@@ -1417,13 +1417,16 @@ async def worldbook_put(request: Request):
 
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(WEB_DIR, "index.html"))
+    # no-cache: 允许缓存但强制revalidate, 防iOS PWA启发式缓存吃旧CSS(PWA灰缝1027案)
+    return FileResponse(os.path.join(WEB_DIR, "index.html"),
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/manifest.json")   # M4 PWA
 def manifest_ep():
     return FileResponse(os.path.join(WEB_DIR, "manifest.json"),
-                        media_type="application/manifest+json")
+                        media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/apple-touch-icon.png")

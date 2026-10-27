@@ -367,6 +367,7 @@ async function openChat(cid){
   $('chatScreen').style.display='flex';
   $('chatTitle').textContent=CMAP[cid].name;
   $('chatAvatar').innerHTML=avatarHtml(cid,34);   /* 切片5: 图片头像 */
+  $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;   /* 热修1027: 此行切片5被误删→切换角色不清屏,五角色聊天互串;勿再动 */
   applyBg();
   try{
     const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=50`);

@@ -286,13 +286,13 @@ function appendRow(cid,msg,stagger){
   const mt=(msg.meta&&typeof msg.meta==='object')?msg.meta:{};
   if(msg.kind==='image_in'||msg.kind==='image_out'){   /* M3: 图片消息缩略图+识图注记 */
     const b=document.createElement('div');b.className='bubble';
-    const im=document.createElement('img');im.className='pic';im.loading='lazy';im.src=msg.media_path||'';
-    im.onclick=()=>zoomImg(msg.media_path);b.appendChild(im);wrap.appendChild(b);
-    if(mt.vision){const c=document.createElement('div');c.className='cap';c.textContent='👁 '+mt.vision;wrap.appendChild(c)}
+    const im=document.createElement('img');im.className='pic';im.loading='lazy';im.src=BASE+(msg.media_path||'');
+    im.onclick=()=>zoomImg(BASE+msg.media_path);b.appendChild(im);wrap.appendChild(b);
+    if(mt.vision){const c=document.createElement('div');c.className='cap';c.textContent='👁 已识图';wrap.appendChild(c)}
   }else if(msg.kind==='voice'){                        /* M3: 语音条(m4a直放) */
     const b=document.createElement('div');b.className='bubble audio';
     const d=document.createElement('span');d.className='dur';d.textContent=(mt.dur||0)+'"';
-    const au=document.createElement('audio');au.controls=true;au.preload='metadata';au.src=msg.media_path||'';
+    const au=document.createElement('audio');au.controls=true;au.preload='metadata';au.src=BASE+(msg.media_path||'');
     b.appendChild(d);b.appendChild(au);wrap.appendChild(b);
   }else{
   const parts=(msg.role==='user')?[{text:msg.content,paren:false}]:splitBubbles(msg.content);
@@ -377,8 +377,8 @@ function renderAtt(){
   bar.style.display=pending.length?'flex':'none';
   pending.forEach((p,i)=>{
     const d=document.createElement('div');d.className='att';
-    const im=document.createElement('img');im.src=p.media_path;im.loading='lazy';
-    im.onclick=()=>zoomImg(p.media_path);   /* P2-1: DOM构建替代innerHTML拼接, 防路径注入 */
+    const im=document.createElement('img');im.src=BASE+p.media_path;im.loading='lazy';
+    im.onclick=()=>zoomImg(BASE+p.media_path);   /* P2-1: DOM构建替代innerHTML拼接, 防路径注入 */
     const x=document.createElement('div');x.className='x';x.textContent='×';x.onclick=()=>dropAtt(i);
     d.append(im,x);bar.appendChild(d);
   });

@@ -41,3 +41,11 @@
 - OC+gstack审计(GLM-5.3):报告`审计_切片2_gstack_1027.md`;🔴S1热更迭代SERVICES竞态(list快照)/🔴S2加载失败仍开弹窗致空覆盖(catch return)/🟡A1缺worldbook键静默清空(400)——全修实弹验证(updated_agents=1/mock fetch弹窗none/400文案)
 - 验收:重启持久✓/chars健康✓/9项回归全绿
 - 三件套翻页:切片2→done,Current Phase→切片3;handoff重写=切片3施工单(不入库)
+
+
+## 2026-10-27 Session 4(切片3收口:M3媒体三件+审计修复+commit)
+- 施工:`/api/upload`(魔数+heic sips转jpg+16MB预检+uuid文件名)→image_in;`/api/msg`挂img_seqs→worker识图注入+meta.vision;回复[FILE:]+gen_log兜底(游标去重/升序/120行)→image_out|voice行;opus→ffmpeg→afconvert→m4a(iOS可播)+ffprobe时长;前端+按钮/attBar预览/×撤回/四类渲染/lazy;新增`/api/att_del`(撤回:行+文件双删,校验角色归属)
+- E2E双通:识图入(红图→"是红色的"+GLM-4V注记)/媒体出(图+语音m4a dur气泡);DOM断言全绿;media/in"红点"=lazy非bug
+- OC审计(GLM-5.3):P0×2+P1×7+P2×9;修P0全+P1×5+P2×6共13处(att_del双消/uuid防撞/realpath防穿越/魔数+预检/gen_log游标/硬上限4/meta合并/半截m4a清理/renderAtt createElement/限3张/closeChat孤儿清理);暂缓P1-6/P2-8/P2-4→切片4
+- 验证:py_compile+新鲜库单测(穿越拒/游标去重/上限封顶)+活体E2E(假图400/空400/att_del双删/越权false/文本冒烟202)+浏览器行为测试(DataTransfer注入File→×撤回→库行+文件双消 seq37)
+- commit 9b22c3f(416+/13-);审计报告归档`审计_切片3_gstack_1027.md`;handoff重写=切片4施工单(不入库)

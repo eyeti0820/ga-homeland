@@ -51,3 +51,15 @@ D1 全媒体复用 / D2 共享世界书 / D3 手写仿微信 / D4 标点切泡(<
 - **OC审计标准姿势**:subprocess.Popen(cwd=repo,stdout=log文件,start_new_session=True)防管道阻塞;完成判据=进程退出+log稳定;报告去ANSI(re\x1b)再归档,python直读全文
 - **桥接验证方法论**:跨通道记忆测试用"暗号"三步——通道A告知→查宫殿入库(source字段)→通道B(apiapp curl)提问;勿信单通道自证
 - **curl -w %{http_code} 拼接易翻车**:python侧直接用 urllib.request 更稳(还能顺手json.loads)
+
+
+## 2026-10-27 Session 4(切片3坑)
+- **前端FormData必须 headers:{}**:api()默认json头,上传须让浏览器自动带multipart boundary,否则422
+- **node不在裸PATH**(~/.nvm glob也空):JS语法检改用浏览器实测(location.reload后typeof四函数+行为测试)更硬
+- **媒体文件名同毫秒撞名**:time*1000连发会撞→追加uuid6位(upload/voice两处都要)
+- **gen_log兜底防重复搬运**:时间窗重叠会重复入库→按char记_GEN_CURSOR游标+ts升序+脏ts逐行try容错
+- **meta是JSON对象勿整串覆盖**:写vision先读旧meta合并,否则dur等键互踩
+- **media/in图片"红点"假警报**:img loading=lazy在视口外不加载≠404;验证比getBoundingClientRect或fresh load
+- **测试断言先自查**:T3"6图→4行"断言误&&上notes token数→假FAIL;库内COUNT才是真相
+- **afconvert失败留半截**:rc!=0也要unlink输出,防下次误判
+- **审计报告归档命名**:audit_out.md→`审计_切片3_gstack_1027.md`(与前两切片一致,入库);research_切片3.md/temp_build_notes.md留本地不入

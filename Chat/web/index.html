@@ -58,6 +58,21 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
 @keyframes pop{from{transform:scale(.92);opacity:.4}to{transform:scale(1);opacity:1}}
 #inputBar{flex:none;background:#f7f7f7;border-top:1px solid #dcdcdc;padding:8px 10px;display:flex;
   gap:8px;align-items:flex-end;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+/* ---- M3媒体 ---- */
+#plusBtn{flex:none;width:32px;height:32px;min-width:32px;border-radius:50%;border:1.5px solid #bbb;
+  color:#888;font-size:20px;line-height:29px;text-align:center;cursor:pointer;user-select:none;background:#fff}
+#attBar{flex:none;display:none;flex-wrap:wrap;gap:6px;padding:6px 10px;background:#f7f7f7}
+#attBar .att{position:relative;width:54px;height:54px}
+#attBar .att img{width:100%;height:100%;object-fit:cover;border-radius:4px;display:block}
+#attBar .att .x{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;
+  background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:18px;text-align:center;cursor:pointer}
+.bubble img.pic{max-width:180px;max-height:240px;border-radius:6px;display:block;cursor:zoom-in}
+.bubble.audio{display:flex;align-items:center;gap:8px}
+.bubble.audio .dur{font-size:12px;opacity:.75;white-space:nowrap}
+.cap{font-size:11px;color:#999;margin:2px 2px 0;max-width:180px}
+#imgOverlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:none;
+  align-items:center;justify-content:center}
+#imgOverlay img{max-width:96vw;max-height:96vh}
 #msgInput{flex:1;border:none;border-radius:6px;background:#fff;padding:9px 10px;font-size:15.5px;
   line-height:1.4;resize:none;outline:none;max-height:96px;font-family:inherit}
 #sendBtn{flex:none;border:none;border-radius:6px;background:#07c160;color:#fff;font-size:15px;
@@ -92,10 +107,14 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
       <div class="avatar" id="chatAvatar" style="width:34px;height:34px;font-size:14px"></div>
     </div>
     <div id="msgArea"></div>
+    <div id="attBar"></div>
     <div id="inputBar">
+      <div id="plusBtn" onclick="pickImg()" title="发图片">＋</div>
       <textarea id="msgInput" rows="1" oninput="autoGrow(this)" onkeydown="inputKey(event)"></textarea>
       <button id="sendBtn" onclick="sendMsg()">发送</button>
     </div>
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="onPicked(this)">
+    <div id="imgOverlay" onclick="this.style.display='none'"><img id="imgBig" alt=""></div>
   </div>
 </div>
 <div id="toast"></div>
@@ -264,6 +283,18 @@ function appendRow(cid,msg,stagger){
   row.appendChild(av.firstChild);
   const wrap=document.createElement('div');wrap.className='bubbles';row.appendChild(wrap);
   area.appendChild(row);
+  const mt=(msg.meta&&typeof msg.meta==='object')?msg.meta:{};
+  if(msg.kind==='image_in'||msg.kind==='image_out'){   /* M3: 图片消息缩略图+识图注记 */
+    const b=document.createElement('div');b.className='bubble';
+    const im=document.createElement('img');im.className='pic';im.loading='lazy';im.src=msg.media_path||'';
+    im.onclick=()=>zoomImg(msg.media_path);b.appendChild(im);wrap.appendChild(b);
+    if(mt.vision){const c=document.createElement('div');c.className='cap';c.textContent='👁 '+mt.vision;wrap.appendChild(c)}
+  }else if(msg.kind==='voice'){                        /* M3: 语音条(m4a直放) */
+    const b=document.createElement('div');b.className='bubble audio';
+    const d=document.createElement('span');d.className='dur';d.textContent=(mt.dur||0)+'"';
+    const au=document.createElement('audio');au.controls=true;au.preload='metadata';au.src=msg.media_path||'';
+    b.appendChild(d);b.appendChild(au);wrap.appendChild(b);
+  }else{
   const parts=(msg.role==='user')?[{text:msg.content,paren:false}]:splitBubbles(msg.content);
   parts.forEach((p,i)=>{
     const b=document.createElement('div');b.className='bubble'+(p.paren?' paren':'');b.textContent=p.text;
@@ -271,6 +302,7 @@ function appendRow(cid,msg,stagger){
     if(stagger){b.style.display='none';
       setTimeout(()=>{b.style.display='block';scrollBottom()},i*300)}
   });
+  }
   rendered.add(msg.seq);
   if(!firstSeqInDom[cid]||msg.seq<firstSeqInDom[cid])firstSeqInDom[cid]=msg.seq;
   scrollBottom();
@@ -297,6 +329,9 @@ async function openChat(cid){
   pollOnce();
 }
 function closeChat(){
+  const cid=activeChar,orphan=pending.slice();   /* P0-1: 切角色前撤回未发送的已上传图 */
+  pending=[];renderAtt();
+  if(cid)orphan.forEach(p=>{if(p.seq)api('/api/att_del',{method:'POST',body:JSON.stringify({char_id:cid,seq:p.seq})}).catch(()=>{})});
   activeChar=null;
   $('chatScreen').style.display='none';
   $('listScreen').style.display='flex';
@@ -335,15 +370,49 @@ function autoGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollH
 function inputKey(ev){
   if(ev.key==='Enter'&&!ev.shiftKey&&!ev.isComposing){ev.preventDefault();sendMsg()}
 }
+/* ---------- M3媒体: 图片上传/预览/大图 ---------- */
+let pending=[];   /* 已上传待发 [{seq,media_path}] */
+function renderAtt(){
+  const bar=$('attBar');bar.innerHTML='';
+  bar.style.display=pending.length?'flex':'none';
+  pending.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='att';
+    const im=document.createElement('img');im.src=p.media_path;im.loading='lazy';
+    im.onclick=()=>zoomImg(p.media_path);   /* P2-1: DOM构建替代innerHTML拼接, 防路径注入 */
+    const x=document.createElement('div');x.className='x';x.textContent='×';x.onclick=()=>dropAtt(i);
+    d.append(im,x);bar.appendChild(d);
+  });
+}
+async function dropAtt(i){
+  const p=pending[i];pending.splice(i,1);renderAtt();
+  if(p&&p.seq&&activeChar){try{await api('/api/att_del',{method:'POST',body:JSON.stringify({char_id:activeChar,seq:p.seq})})}catch(e){}}   /* P0-1: 服务端同步撤回 */
+}
+function pickImg(){$('fileInput').value='';$('fileInput').click()}
+async function onPicked(inp){
+  if(!activeChar)return;
+  for(const f of inp.files){
+    if(pending.length>=3){toast('一次最多带3张图');break}   /* P1-2: 前端先限3, 服务端硬限4 */
+    if(!f.type.startsWith('image/')){toast('仅支持图片');continue}
+    const fd=new FormData();fd.append('char_id',activeChar);fd.append('file',f,f.name);
+    try{const r=await api('/api/upload',{method:'POST',body:fd,headers:{}});pending.push(r);renderAtt()}
+    catch(e){toast('上传失败: '+e.message)}
+  }
+}
+function zoomImg(u){if(!u)return;$('imgBig').src=u;$('imgOverlay').style.display='flex'}
 async function sendMsg(){
   if(!activeChar||sending)return;
   const el=$('msgInput'),text=el.value.trim();
-  if(!text)return;
+  const imgs=pending.slice();
+  if(!text&&!imgs.length)return;
   sending=true;$('sendBtn').disabled=true;
   try{
-    const r=await api('/api/msg',{method:'POST',body:JSON.stringify({char_id:activeChar,text:text})});
-    appendRow(activeChar,{seq:r.seq,role:'user',kind:'text',content:text,ts:r.ts||Date.now()/1000},false);
-    setReadSeq(activeChar,r.seq);   /* B11: 发送即置已读, 返回列表不再误标未读 */
+    const r=await api('/api/msg',{method:'POST',body:JSON.stringify({char_id:activeChar,text:text,image_seqs:imgs.map(p=>p.seq)})});
+    const ts=r.ts||Date.now()/1000;
+    imgs.forEach(p=>appendRow(activeChar,{seq:p.seq,role:'user',kind:'image_in',content:'[图片]',
+      media_path:p.media_path,meta:null,ts:ts},false));   /* 真seq乐观渲染, poll按rendered去重 */
+    if(text)appendRow(activeChar,{seq:r.seq,role:'user',kind:'text',content:text,ts:ts},false);
+    setReadSeq(activeChar,r.seq);
+    pending=[];renderAtt();
     el.value='';autoGrow(el);
     setTimeout(pollOnce,400);
   }catch(e){toast('发送失败: '+e.message)}

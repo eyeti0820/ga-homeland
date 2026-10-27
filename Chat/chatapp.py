@@ -15,7 +15,7 @@
   服务改8789, 单例锁独立用GA_LOCK_PORT=19544(避开878x段, 防再撞)。
 文件位置事由: GADIR非git仓, 真文件放家园repo Chat/入库; GA运行时经GA_RUNTIME_DIR引用。
 """
-import asyncio, json, os, queue as Q, re, sqlite3, sys, threading, time
+import asyncio, json, os, queue as Q, re, shutil, sqlite3, subprocess, sys, threading, time, uuid
 from contextlib import contextmanager
 
 # ---------------- 自举(照apiapp L20-35; 必须在import agentmain之前) ----------------
@@ -81,10 +81,29 @@ def db():
         conn.close()
 
 
+# ---- M3媒体常量(切片3 2026-10-27): 识图/发图/语音条 ----
+VOICE_DIR = os.path.join(MEDIA_DIR, "voice")   # opus→m4a语音条(前端audio直放, iOS通)
+OUT_DIR = os.path.join(MEDIA_DIR, "out")       # 发图从char_media_out搬运入库(/media静态挂载)
+CM_OUT_DIR = os.path.join(GA_ROOT, "temp", "char_media_out")   # char_media产物绝对路径(bash工具cwd=GA_ROOT/temp)
+GEN_LOG = os.path.join(CM_OUT_DIR, "gen_log.jsonl")            # char_media逐条追加{ts,char,path,desc}
+VISION_CFG = (os.environ.get("CHAT_VISION_CFG") or "native_oai_config10").strip()  # fsapp同款GLM-4V识图
+_CLONE_CHARS = ("xiazhou", "shenxinghui", "qinche")   # 有云端克隆音色; 黎深/祁煜tts会报错(正常)
+MEDIA_HINTS = {c: (
+    f"[媒体工具修正·{CHAR_NAMES[c]}专属] 本聊天服务五个角色同住一个进程, 你调用 char_media.py 的"
+    f" tts/img 命令时, 必须在命令末尾追加 --char={c} "
+    f"(即 ... frontends/char_media.py tts \"要说的话\" --char={c}), "
+    f"否则音色和生成日志会错记到夏以昼名下。不要用 wximg/wxvoice(那是微信角色专用命令)。"
+    + ("" if c in _CLONE_CHARS else
+       f" 另外你({CHAR_NAMES[c]})没有克隆音色档案, tts 会报错, 请直接用文字表达。"))
+    for c in CHARS}
+
+
 def init_db():
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "in"), exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "bg"), exist_ok=True)
+    os.makedirs(OUT_DIR, exist_ok=True)     # M3: 发图入库
+    os.makedirs(VOICE_DIR, exist_ok=True)   # M3: 语音条m4a
     with db() as conn:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS messages(
@@ -107,6 +126,9 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_job_char_status ON jobs(char_id, status);
         CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
         """)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+        if "img_seqs" not in cols:          # M3迁移(必须在建表后): job挂image_in行seq(逗号分隔, 无图空串)
+            conn.execute("ALTER TABLE jobs ADD COLUMN img_seqs TEXT")
 
 
 def recover_jobs():
@@ -157,6 +179,8 @@ class CharService:
                     _apply_worldbook(agent)   # M2: persona之后注入共享世界书(读meta; 无则不注入)
                     self.ctx.apply_model(agent)
                     threading.Thread(target=agent.run, daemon=True).start()
+                    if MEDIA_HINTS.get(self.char):   # M3: per-char媒体命令修正(五角色共进程, 音色防串)
+                        agent.extra_sys_prompts.append(MEDIA_HINTS[self.char])
                     self.agent = agent
                     _apply_worldbook(agent)   # 竞态自愈: 构建期间若世界书被热更, 落成时再校一次
                     print(f"[chatapp] {self.char}: agent ready", flush=True)
@@ -273,6 +297,197 @@ def _is_typing(char):
         return r["n"] > 0
 
 
+# ---------------- M3媒体: 识图/发图/语音条 (2026-10-27, 链路照fsapp成熟方案但不import) ----------------
+_FILE_TAG_RE = re.compile(r"\[FILE:[^\]]+\]")   # 仅文本清洗用; 提取用_extract_files
+_IMG_EXT = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def _extract_files(text):
+    return re.findall(r"\[FILE:([^\]]+)\]", text or "")
+
+
+def _media_fp(url_path):
+    """/media/in/x.jpg → 磁盘绝对路径; 越权路径(../穿越)返回''(P1-7)"""
+    p = str(url_path or "")
+    if not p.startswith("/media/"):
+        return p
+    base = os.path.realpath(MEDIA_DIR)
+    fp = os.path.realpath(os.path.join(MEDIA_DIR, p[len("/media/"):]))
+    return fp if (fp == base or fp.startswith(base + os.sep)) else ""
+
+
+def _vision_one(img_path):
+    """识图(fsapp _vision_describe同款): VISION_CFG=GLM-4V图转文字; 单图失败返回''(fail-open)"""
+    try:
+        import base64 as _b64
+        from llmcore import resolve_client
+        with open(img_path, "rb") as f:
+            b64 = _b64.b64encode(f.read()).decode()
+        mime = "image/png" if str(img_path).lower().endswith(".png") else "image/jpeg"
+        c = resolve_client(VISION_CFG)
+        gen = c.chat([{"role": "user", "content": [
+            {"type": "text", "text": "用中文客观描述这张图片的关键内容(场景/人物/物体/画面文字), 200字内。"},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}]}])
+        chunks, resp = [], None
+        try:
+            while True:
+                ch = next(gen)
+                if ch:
+                    chunks.append(str(ch))
+        except StopIteration as e:
+            resp = e.value
+        d = str(getattr(resp, "content", "") or "".join(chunks)).strip()
+        return re.sub(r"<think>.*?</think>", "", d, flags=re.S).strip()
+    except Exception as e:
+        print(f"[chatapp] vision failed {os.path.basename(str(img_path))}: {e}", flush=True)
+        return ""
+
+
+def _describe_job_images(char, job):
+    """job.img_seqs→识图文本列表; 并把描述回写image_in行meta.vision(前端可复核)"""
+    seqs = [int(x) for x in str(job["img_seqs"] or "").split(",") if x.strip().isdigit()]
+    out = []
+    if not seqs:
+        return out
+    with db() as conn:
+        q = ",".join("?" * len(seqs))
+        rows = conn.execute(
+            "SELECT * FROM messages WHERE seq IN (%s) AND char_id=? AND role='user' "
+            "AND kind='image_in'" % q, seqs + [char]).fetchall()
+    for r in rows:
+        d = _vision_one(_media_fp(r["media_path"])) or "(识图失败)"
+        out.append(f"[用户发图·自动识图]\n{d}")
+        try:   # P2-7: meta为JSON对象, 只更新vision键不整串覆盖
+            with db() as conn:
+                old = conn.execute("SELECT meta FROM messages WHERE seq=?",
+                                   (r["seq"],)).fetchone()
+                try:
+                    meta = json.loads(old["meta"]) if old and old["meta"] else {}
+                except Exception:
+                    meta = {}
+                if not isinstance(meta, dict):
+                    meta = {}
+                meta["vision"] = d[:500]
+                conn.execute("UPDATE messages SET meta=? WHERE seq=?",
+                             (json.dumps(meta, ensure_ascii=False), r["seq"]))
+        except Exception:
+            pass
+    return out
+
+
+def _opus_to_m4a(opus_path):
+    """opus→m4a(aac64k, afconvert实测rc0)存VOICE_DIR; afinfo读时长; 失败(None, None)"""
+    try:
+        os.makedirs(VOICE_DIR, exist_ok=True)
+        name = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}_{os.path.basename(str(opus_path))}.m4a"
+        out = os.path.join(VOICE_DIR, name)
+        r = subprocess.run(["afconvert", "-f", "m4af", "-d", "aac", "-b", "64000",
+                            str(opus_path), out], capture_output=True, text=True, timeout=60)
+        if r.returncode != 0 or not os.path.exists(out):
+            print(f"[chatapp] afconvert rc={r.returncode}: {r.stderr.strip()[-120:]}", flush=True)
+            try:   # P2-5: 清掉半截产物
+                os.unlink(out)
+            except Exception:
+                pass
+            return None, None
+        dur = 0.0
+        r2 = subprocess.run(["afinfo", out], capture_output=True, text=True, timeout=30)
+        m = re.search(r"estimated duration: *([\d.]+)", r2.stdout)
+        if m:
+            dur = round(float(m.group(1)), 1)
+        return f"/media/voice/{name}", dur
+    except Exception as e:
+        print(f"[chatapp] opus转m4a失败: {e}", flush=True)
+        return None, None
+
+
+def _emit_media_row(char, src, desc=""):
+    """单个媒体产物→messages行; 返回宫殿注记(无效产物返回'')"""
+    p, low = str(src), str(src).lower()
+    if low.endswith(".opus"):
+        url, dur = _opus_to_m4a(p)
+        if url:
+            _insert_msg(char, "assistant", "voice", "(语音)", media_path=url,
+                        meta={"dur": dur, "src": os.path.basename(p)})
+            return "[发过语音]"
+        return ""
+    if low.endswith(_IMG_EXT):
+        try:
+            os.makedirs(OUT_DIR, exist_ok=True)
+            name = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}{os.path.splitext(p)[1].lower()}"
+            shutil.copy2(p, os.path.join(OUT_DIR, name))
+            _insert_msg(char, "assistant", "image_out", "[图片]",
+                        media_path=f"/media/out/{name}",
+                        meta={"desc": desc[:80]} if desc else None)
+            return f"[发过图:{desc[:60]}]" if desc else "[发过图]"
+        except Exception as e:
+            print(f"[chatapp] 发图搬运失败: {e}", flush=True)
+    return ""
+
+
+_GEN_CURSOR = {}   # P1-4: char → 已处理到的gen_log ts, 跨job去重(防时间窗重叠重复搬运)
+
+
+def _scan_gen_log(char, t0, got):
+    """兜底(照fsapp _scan_media): agent没把[FILE:]写进回复时, 扫gen_log尾120行补漏;
+    P2-3: 窗口40→120行/按ts升序/逐行容错ts脏值; P1-4: 游标=max(t0,上次处理点)"""
+    out = []
+    try:
+        if not os.path.exists(GEN_LOG):
+            return out
+        t_start = max(float(t0), _GEN_CURSOR.get(char, float(t0)))
+        with open(GEN_LOG, encoding="utf-8") as f:
+            lines = f.readlines()[-120:]
+        hit = []
+        for ln in lines:
+            try:
+                r = json.loads(ln.strip())
+            except Exception:
+                continue
+            if r.get("char") != char:
+                continue
+            try:
+                ts = float(r.get("ts") or 0)
+            except (TypeError, ValueError):
+                continue
+            if ts < t_start:
+                continue
+            p = r.get("path") or ""
+            if p and os.path.isabs(p) and os.path.exists(p) and p not in got:
+                got.add(p)
+                hit.append((ts, p, str(r.get("desc") or "")))
+        for ts, p, desc in sorted(hit, key=lambda x: x[0]):
+            _GEN_CURSOR[char] = max(_GEN_CURSOR.get(char, 0.0), ts)
+            out.append((p, desc))
+        _GEN_CURSOR[char] = max(_GEN_CURSOR.get(char, 0.0), time.time())
+    except Exception as e:
+        print(f"[chatapp] gen_log扫描失败: {e}", flush=True)
+    return out
+
+
+def _emit_reply_media(char, raw, t0):
+    """回复中[FILE:绝对路径]提取 + gen_log兜底 → 媒体行(硬上限4条, P1-3); 返回去重宫殿注记串"""
+    got = set()
+    for f in _extract_files(raw):
+        f = f.strip()
+        if f:
+            got.add(f)
+    notes = []
+    for f in sorted(got)[:4]:
+        if os.path.isabs(f) and os.path.exists(f):
+            n = _emit_media_row(char, f)
+            if n:
+                notes.append(n)
+    for p, desc in _scan_gen_log(char, t0, got):
+        if len(notes) >= 4:
+            print(f"[chatapp] 媒体行超4条截断 char={char}", flush=True)
+            break
+        n = _emit_media_row(char, p, desc)
+        if n:
+            notes.append(n)
+    return " ".join(dict.fromkeys(notes))
+
+
 async def _process_job(job):
     char, user_seq = job["char_id"], job["user_seq"]
     m = await asyncio.to_thread(_fetch_user_msg, user_seq)
@@ -289,6 +504,11 @@ async def _process_job(job):
         mem = ""
     task_text = (f"{mem}\n\n---\n[以上为记忆回响, 以下是用户本轮消息]\n{user_text}" if mem
                  else user_text)
+
+    # M3识图: job挂的image_in行→GLM-4V转述注入本轮prompt(失败fail-open)
+    img_parts = await asyncio.to_thread(_describe_job_images, char, job)
+    if img_parts:
+        task_text += "\n\n" + "\n\n".join(img_parts)
 
     dq = agent.put_task(f"{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)
     start, raw = time.time(), None
@@ -311,12 +531,21 @@ async def _process_job(job):
     m = _ERR_FENCE_RE.search(raw)
     if m:   # B4: agent内部错误文本(尾随format_error围栏)不入messages/不入宫殿
         raise RuntimeError(f"agent内部错误: {m.group(1)[:120]}")
-    final = build_done_text(_LLM_RUNNING_RE.sub("", raw)) if raw.strip() else ""
+
+    # M3: 文本行先入(去掉[FILE:]占位, 媒体单独成行); 再发媒体行; 宫殿注记只随ingest
+    final = build_done_text(_LLM_RUNNING_RE.sub("", _FILE_TAG_RE.sub("", raw))) if raw.strip() else ""
     final = (final or "").strip()
     await asyncio.to_thread(_insert_msg, char, "assistant", "text", final or "……")
-    if final:
+    mnote = ""
+    try:
+        mnote = await asyncio.to_thread(_emit_reply_media, char, raw, start - 2)
+    except Exception as e:
+        print(f"[chatapp] {char}: 媒体行产出失败: {e}", flush=True)
+    if final or mnote:
         try:
-            await asyncio.to_thread(svc.ctx.ingest, SERVICE_SOURCE, user_text, final)
+            await asyncio.to_thread(
+                svc.ctx.ingest, SERVICE_SOURCE, user_text,
+                (final + (f"\n{mnote}" if mnote else "")) or mnote)
         except Exception as e:
             print(f"[chatapp] {char}: ingest failed: {e}", flush=True)
 
@@ -397,6 +626,94 @@ def health():
             "jobs": {r["status"]: r["c"] for r in n}}
 
 
+@app.post("/api/upload")
+async def upload_image(request: Request):
+    """M3识图上传: multipart(file+char_id)→media/in/→image_in行; 返回seq供/api/msg挂job"""
+    try:
+        cl = int(request.headers.get("content-length") or 0)   # P1-5: 解析前预检
+        if cl > 16 * 1024 * 1024:
+            return _err(413, "图片过大(>15MB)")
+        form = await request.form()
+        f = form.get("file")
+        if f is None or isinstance(f, str):
+            return _err(400, "缺少file字段")
+        raw = await f.read()
+    except Exception:
+        return _err(400, "请求体须为multipart/form-data")
+    char = str(form.get("char_id") or "").strip()
+    if char not in CHARS:
+        return _err(400, f"char_id须为: {','.join(CHARS)}")
+    if len(raw) > 15 * 1024 * 1024:
+        return _err(400, "图片过大(>15MB)")
+    if not raw:   # P1-1: 空文件/魔数校验
+        return _err(400, "空文件")
+    if not (raw.startswith((b"\xff\xd8\xff", b"\x89PNG", b"RIFF", b"GIF8"))
+            or raw[4:8] == b"ftyp"):
+        return _err(400, "不是有效的图片文件")
+    ext = os.path.splitext(str(getattr(f, "filename", "") or ""))[1].lower().lstrip(".")
+    if ext not in ("jpg", "jpeg", "png", "webp", "gif", "heic"):
+        ext = "jpg"
+    def _store_img():
+        nonlocal ext, raw
+        os.makedirs(os.path.join(MEDIA_DIR, "in"), exist_ok=True)
+        if ext == "heic":   # P2-9: GLM-4V不认heic, sips转jpg
+            tmp = os.path.join(MEDIA_DIR, "in", f".tmp_{uuid.uuid4().hex[:8]}.heic")
+            jpg = tmp + ".jpg"
+            try:
+                with open(tmp, "wb") as w:
+                    w.write(raw)
+                rr = subprocess.run(["sips", "-s", "format", "jpeg", tmp, "--out", jpg],
+                                    capture_output=True, text=True, timeout=30)
+                if rr.returncode == 0 and os.path.exists(jpg):
+                    with open(jpg, "rb") as fr:
+                        raw = fr.read()
+                    ext = "jpg"
+            finally:
+                for x in (tmp, jpg):
+                    try:
+                        os.unlink(x)
+                    except Exception:
+                        pass
+        name = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}.{ext}"
+        with open(os.path.join(MEDIA_DIR, "in", name), "wb") as w:
+            w.write(raw)
+        url = f"/media/in/{name}"
+        return _insert_msg(char, "user", "image_in", "[图片]", media_path=url), url
+    seq, url = await asyncio.to_thread(_store_img)
+    return {"seq": seq, "media_path": url}
+
+
+@app.post("/api/att_del")
+async def att_del(request: Request):
+    """P0-1: 撤回未发送的上传图(前端取消附件/关闭会话时调); 仅删本角色user image_in行+文件"""
+    try:
+        body = await request.json()
+    except Exception:
+        return _err(400, "请求体不是合法JSON")
+    body = body if isinstance(body, dict) else {}
+    char = str(body.get("char_id") or "").strip()
+    seq = body.get("seq")
+    if char not in CHARS or not str(seq).strip().isdigit():
+        return _err(400, "参数不合法")
+    def _del():
+        with db() as conn:
+            r = conn.execute(
+                "SELECT media_path FROM messages WHERE seq=? AND char_id=? "
+                "AND role='user' AND kind='image_in'", (int(seq), char)).fetchone()
+            if not r:
+                return False
+            conn.execute("DELETE FROM messages WHERE seq=?", (int(seq),))
+            fp = _media_fp(r["media_path"])
+            if fp and os.path.isfile(fp):
+                try:
+                    os.unlink(fp)
+                except Exception:
+                    pass
+            return True
+    ok = await asyncio.to_thread(_del)
+    return {"deleted": ok}
+
+
 @app.post("/api/msg")
 async def post_msg(request: Request):
     try:
@@ -409,19 +726,36 @@ async def post_msg(request: Request):
     text = str(body.get("text") or "").strip()
     if char not in CHARS:
         return _err(400, f"char_id须为: {','.join(CHARS)}")
-    if not text:
+    image_seqs = body.get("image_seqs")
+    if image_seqs is None:
+        image_seqs = []
+    if not isinstance(image_seqs, list):
+        return _err(400, "image_seqs须为数组")
+    image_seqs = [int(s) for s in image_seqs if str(s).strip().isdigit()][:3]
+    if not text and not image_seqs:
         return _err(400, "text不能为空")
     if len(text) > 4000:
         return _err(400, "text过长(>4000)")
-    def _store():   # B2: 消息+job同事务; B9: 服务端权威ts
+    if image_seqs:   # M3: 校验图片归属(本角色/用户/image_in行), 防跨角色串图
+        with db() as conn:
+            q = ",".join("?" * len(image_seqs))
+            rows = conn.execute(
+                "SELECT seq FROM messages WHERE seq IN (%s) AND char_id=? "
+                "AND role='user' AND kind='image_in'" % q,
+                image_seqs + [char]).fetchall()
+        if len(rows) != len(set(image_seqs)):
+            return _err(400, "image_seqs含无效或非本角色的图片")
+    def _store():   # B2: 消息+job同事务; B9: 服务端权威ts; M3: img_seqs逗号串挂job
         ts = time.time()
         with db() as conn:
             cur = conn.execute(
                 "INSERT INTO messages(char_id, role, kind, content, ts) "
-                "VALUES (?, 'user', 'text', ?, ?)", (char, text, ts))
+                "VALUES (?, 'user', 'text', ?, ?)", (char, text or "[图片]", ts))
             seq = cur.lastrowid
-            cur = conn.execute("INSERT INTO jobs(char_id, status, user_seq, created) "
-                               "VALUES (?, 'pending', ?, ?)", (char, seq, ts))
+            cur = conn.execute(
+                "INSERT INTO jobs(char_id, status, user_seq, img_seqs, created) "
+                "VALUES (?, 'pending', ?, ?, ?)",
+                (char, seq, ",".join(map(str, image_seqs)), ts))
             return seq, cur.lastrowid, ts
     seq, job_id, ts = await asyncio.to_thread(_store)
     return JSONResponse({"seq": seq, "job_id": job_id, "ts": ts}, status_code=202)

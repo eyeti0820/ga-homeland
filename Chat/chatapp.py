@@ -51,6 +51,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI(title="GA Chat", version="0.1")
 
@@ -193,6 +194,7 @@ class CharService:
 
 
 SERVICES = {}   # char -> CharService
+_RETIRED = []   # 审计P1-2: B10退役的旧CharService留档(agent.run线程无停止口, 计数防泄漏失追踪)
 
 
 def _svc(char):
@@ -410,6 +412,7 @@ def _emit_media_row(char, src, desc=""):
             _insert_msg(char, "assistant", "voice", "(语音)", media_path=url,
                         meta={"dur": dur, "src": os.path.basename(p)})
             return "[发过语音]"
+        _insert_msg(char, "system", "system", "(一条语音转码失败, 内容丢失)")   # P1-6
         return ""
     if low.endswith(_IMG_EXT):
         try:
@@ -570,18 +573,44 @@ async def _char_worker(char):
         try:
             job = await asyncio.to_thread(_take_job, char)
             if job is None:
-                await asyncio.sleep(1.0)
+                try:   # B6: 等新job事件5s, 免每秒空轮询
+                    await asyncio.wait_for(_wake(char).wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
+                _wake(char).clear()
                 continue
             t0 = time.time()
-            try:
-                await _process_job(job)
-                await asyncio.to_thread(_finish_job, job["id"], "done")
-                print(f"[chatapp] {char}: job#{job['id']} done in {time.time()-t0:.1f}s",
+            attempt = 0
+            while True:   # M4: 可重试错误自动重试(5s/15s), 共3次尝试
+                try:
+                    await _process_job(job)
+                    await asyncio.to_thread(_finish_job, job["id"], "done")
+                    await asyncio.to_thread(_clear_error_hint, job["user_seq"])
+                    print(f"[chatapp] {char}: job#{job['id']} done in {time.time()-t0:.1f}s",
+                          flush=True)
+                    break
+                except Exception as e:
+                    attempt += 1
+                    if attempt <= 2 and _retryable(e):
+                        print(f"[chatapp] {char}: job#{job['id']} 第{attempt}次失败"
+                              f"({str(e)[:80]}), 自动重试", flush=True)
+                        await asyncio.sleep(5.0 if attempt == 1 else 15.0)
+                        continue
+                    try:   # 审计P2-2: 终败落库自身异常不能逃逸(否则被外层兜底吃掉FAIL日志)
+                        await asyncio.to_thread(_finish_job, job["id"], "error", str(e)[:500])
+                        await asyncio.to_thread(_mark_user_error, char, job["user_seq"], e)
+                    except Exception as e2:
+                        print(f"[chatapp] {char}: job#{job['id']} 终败落库异常 {e2}", flush=True)
+                    print(f"[chatapp] {char}: job#{job['id']} FAIL {e}", flush=True)
+                    break
+            svc = SERVICES.get(char)
+            if svc and svc.agent and _agent_ctx_chars(svc) > 150000:   # B10: 滚动重建
+                print(f"[chatapp] {char}: 上下文超150k字符, 换新CharService懒重建(记忆在宫殿)",
                       flush=True)
-            except Exception as e:
-                await asyncio.to_thread(_finish_job, job["id"], "error", str(e)[:500])
-                await asyncio.to_thread(_insert_msg, char, "system", "system", "信号不好, 重发一下?")
-                print(f"[chatapp] {char}: job#{job['id']} FAIL {e}", flush=True)
+                SERVICES[char] = CharService(char)
+                _RETIRED.append(svc)
+                print(f"[chatapp] {char}: B10累计退役{len(_RETIRED)}个agent, "
+                      f"活线程{threading.active_count()}", flush=True)
         except Exception as e:   # worker外层异常兜底, 不让循环死掉
             print(f"[chatapp] {char}: worker loop error: {e}", flush=True)
             await asyncio.sleep(3.0)
@@ -589,8 +618,13 @@ async def _char_worker(char):
 
 @app.on_event("startup")
 async def _startup():
+    init_db()        # B7: uvicorn直启(chatapp:app)也能初始化+恢复(幂等)
+    recover_jobs()
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=40))       # B8: 默认线程池40, 防并发饿死
     for c in CHARS:
         asyncio.create_task(_char_worker(c))
+    asyncio.create_task(_bg_gc_loop())
 
 
 # ---------------- API ----------------
@@ -746,7 +780,8 @@ async def post_msg(request: Request):
         image_seqs = []
     if not isinstance(image_seqs, list):
         return _err(400, "image_seqs须为数组")
-    image_seqs = [int(s) for s in image_seqs if str(s).strip().isdigit()][:3]
+    image_seqs = list(dict.fromkeys(   # P2-4: 去重保序
+        int(s) for s in image_seqs if str(s).strip().isdigit()))[:3]
     if not text and not image_seqs:
         return _err(400, "text不能为空")
     if len(text) > 4000:
@@ -773,6 +808,7 @@ async def post_msg(request: Request):
                 (char, seq, ",".join(map(str, image_seqs)), ts))
             return seq, cur.lastrowid, ts
     seq, job_id, ts = await asyncio.to_thread(_store)
+    _wake(char).set()   # B6: 立即唤醒该角色worker
     return JSONResponse({"seq": seq, "job_id": job_id, "ts": ts}, status_code=202)
 
 
@@ -790,7 +826,20 @@ def poll(char_id: str = "", since: int = 0, full: int = 0):
             rows = conn.execute(
                 "SELECT * FROM messages WHERE char_id=? AND seq>? ORDER BY seq ASC LIMIT 200",
                 (char_id, since)).fetchall()
-    return {"msgs": [_msg_dict(r) for r in rows], "typing": _is_typing(char_id)}
+        errs = []
+        for r in conn.execute(
+                "SELECT seq, meta FROM messages WHERE char_id=? AND role='user' "
+                "AND meta LIKE '%\"error\"%' ORDER BY seq ASC LIMIT 50",
+                (char_id,)):
+            try:
+                m = json.loads(r["meta"]) if r["meta"] else {}
+            except Exception:
+                m = {}
+            if isinstance(m, dict) and m.get("error"):
+                errs.append({"seq": r["seq"],
+                             "error": m["error"] if isinstance(m["error"], str) else ""})
+    return {"msgs": [_msg_dict(r) for r in rows], "typing": _is_typing(char_id),
+            "err_seqs": errs}   # 审计P0-1: 实时会话失败红!pill同步源
 
 
 @app.get("/api/history")
@@ -810,6 +859,283 @@ def history(char_id: str = "", before_seq: int = 0, limit: int = 50):
                 (char_id, limit)).fetchall()
     rows.reverse()
     return {"msgs": [_msg_dict(r) for r in rows]}
+
+
+# ---------------- M4: 唤醒/背景配置/GC/重试 ----------------
+
+WAKE_EVENTS = {}   # B6: char → asyncio.Event, post_msg后唤醒worker
+
+
+def _wake(char):
+    ev = WAKE_EVENTS.get(char)
+    if ev is None:
+        ev = WAKE_EVENTS[char] = asyncio.Event()
+    return ev
+
+
+def _meta_get(key, default=None):
+    with db() as conn:
+        r = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return r["value"] if r else default
+
+
+def _meta_set(key, value):
+    with db() as conn:
+        conn.execute("INSERT INTO meta(key, value) VALUES(?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+_BG_META_KEY = "bg_config"
+
+
+def _bg_current():
+    try:
+        v = json.loads(_meta_get(_BG_META_KEY) or "{}")
+        if isinstance(v, dict) and v.get("mode") in ("none", "color", "image"):
+            return {"mode": v["mode"], "value": str(v.get("value") or "")}
+    except Exception:
+        pass
+    return {"mode": "none", "value": ""}
+
+
+def _media_gc():
+    """P2-8: 删除无引用媒体(in/out/voice/bg, age>1h); 当前背景图豁免; 返回删除数"""
+    keep = set()
+    with db() as conn:
+        for r in conn.execute(
+                "SELECT media_path FROM messages WHERE media_path IS NOT NULL").fetchall():
+            fp = _media_fp(r["media_path"])
+            if fp:
+                keep.add(os.path.abspath(fp))
+    bg = _bg_current()
+    if bg["mode"] == "image" and bg["value"]:
+        fp = _media_fp(bg["value"])
+        if fp:
+            keep.add(os.path.abspath(fp))
+    n, now = 0, time.time()
+    for sub in ("in", "out", "voice", "bg"):
+        d = os.path.join(MEDIA_DIR, sub)
+        if not os.path.isdir(d):
+            continue
+        for f in os.listdir(d):
+            fp = os.path.join(d, f)
+            try:
+                if os.path.abspath(fp) in keep:
+                    continue
+                if now - os.path.getmtime(fp) > 3600:
+                    os.unlink(fp)
+                    n += 1
+            except OSError:
+                continue
+    return n
+
+
+def _retryable(e):
+    """M4: 瞬时/上游错误自动重试判定(429/上游模型错误/超时等)"""
+    s = str(e)
+    return ("上游模型错误" in s or "agent内部错误" in s or "429" in s
+            or "timeout" in s.lower() or "timed out" in s.lower()
+            or isinstance(e, TimeoutError))
+
+
+def _friendly_err(e):
+    s = str(e)
+    if isinstance(e, TimeoutError) or "超时" in s:
+        return "网络超时了"
+    if "429" in s:
+        return "对方占线中"
+    return "信号不好"
+
+
+def _update_msg_meta(seq, fn):
+    try:
+        with db() as conn:
+            old = conn.execute("SELECT meta FROM messages WHERE seq=?",
+                               (seq,)).fetchone()
+            if not old:
+                return
+            try:
+                meta = json.loads(old["meta"]) if old["meta"] else {}
+            except Exception:
+                meta = {}
+            if not isinstance(meta, dict):
+                meta = {}
+            ret = fn(meta)
+            conn.execute("UPDATE messages SET meta=? WHERE seq=?",
+                         (json.dumps(meta, ensure_ascii=False), seq))
+            return ret   # 审计P2-3: 返回fn结果供_clear_error_hint拿err_sys_seq
+    except Exception:
+        return None
+
+
+def _mark_user_error(char, user_seq, e):
+    """M4: 终败→user行meta.error打标(前端红!角标+可重试)
+    审计P2-3: 记err_sys_seq, 成功后由_clear_error_hint撤掉配套system提示行"""
+    if not user_seq:
+        return
+    sys_seq = _insert_msg(char, "system", "system", f"{_friendly_err(e)}, 点红色感叹号可重试")
+    _update_msg_meta(user_seq, lambda m: m.update(error=_friendly_err(e), err_sys_seq=sys_seq))
+
+
+def _clear_error_hint(user_seq):
+    """成功后清error标; 审计P2-3: 连带撤掉'点红!重试'system提示行"""
+    if not user_seq:
+        return
+
+    def _fn(m):
+        ss = m.pop("err_sys_seq", None)
+        m.pop("error", None)
+        return ss
+    sys_seq = _update_msg_meta(user_seq, _fn)
+    if isinstance(sys_seq, int):
+        try:
+            with db() as conn:
+                conn.execute("DELETE FROM messages WHERE seq=? AND role='system'",
+                             (sys_seq,))
+        except Exception:
+            pass
+
+
+def _agent_ctx_chars(svc):
+    """B10: 估算agent进程内上下文字符量(取不到返回0)"""
+    try:
+        hist = list(svc.agent.llmclient.backend.history) if svc.agent else []   # 快照: 防遍历中agent线程append
+        return sum(len(str(getattr(m, "content", "") or "")) for m in hist)
+    except Exception:
+        return 0
+
+
+async def _bg_gc_loop():
+    """P2-8: 启动先跑一轮, 之后每24h一轮"""
+    while True:
+        try:
+            n = await asyncio.to_thread(_media_gc)
+            if n:
+                print(f"[chatapp] 媒体GC回收{n}个文件", flush=True)
+        except Exception as e:
+            print(f"[chatapp] 媒体GC失败: {e}", flush=True)
+        await asyncio.sleep(24 * 3600)
+
+
+@app.get("/api/config")
+def config_get():
+    """M4: 前端启动拉取背景等配置"""
+    return {"bg": _bg_current()}
+
+
+@app.post("/api/config/bg")
+async def bg_set(request: Request):
+    """M4: 会话背景 none|color|image; image=multipart(file), 存media/bg/只留最新一张"""
+    try:
+        cl = int(request.headers.get("content-length") or 0)
+        if cl > 8 * 1024 * 1024:
+            return _err(413, "背景图过大(>8MB)")
+        form = await request.form()
+    except Exception:
+        return _err(400, "请求体须为multipart/form-data")
+    mode = str(form.get("mode") or "").strip()
+    if mode not in ("none", "color", "image"):
+        return _err(400, "mode须为 none/color/image")
+    value = ""
+    if mode == "color":
+        value = str(form.get("value") or "").strip()
+        if not re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})", value):   # 审计P2-5
+            return _err(400, "value须为十六进制颜色(如 #1a1a2e)")
+    elif mode == "image":
+        f = form.get("file")
+        if f is None or isinstance(f, str):
+            return _err(400, "image模式须携带file字段")
+        raw = await f.read()
+        if not raw or not raw.startswith((b"\xff\xd8\xff", b"\x89PNG")):
+            return _err(400, "背景图仅支持jpg/png")
+        if len(raw) > 8 * 1024 * 1024:   # 审计P1-1: 读后限长, 恶意块头谎报length时兜底
+            return _err(413, "背景图过大(>8MB)")
+
+        def _save_bg():
+            d = os.path.join(MEDIA_DIR, "bg")
+            os.makedirs(d, exist_ok=True)
+            name = f"bg_{int(time.time() * 1000)}." + (
+                "png" if raw[:4] == b"\x89PNG" else "jpg")
+            with open(os.path.join(d, name), "wb") as w:
+                w.write(raw)
+            for f2 in os.listdir(d):   # 只留最新一张
+                if f2 != name:
+                    try:
+                        os.unlink(os.path.join(d, f2))
+                    except OSError:
+                        pass
+            return name
+        name = await asyncio.to_thread(_save_bg)
+        value = f"/media/bg/{name}"
+    await asyncio.to_thread(_meta_set, _BG_META_KEY,
+                            json.dumps({"mode": mode, "value": value},
+                                       ensure_ascii=False))
+    return {"ok": True, "bg": {"mode": mode, "value": value}}
+
+
+@app.post("/api/retry")
+async def retry_msg(request: Request):
+    """M4: 重试失败消息: 复用原user行+原job的img_seqs建新job; 成功后worker清error标"""
+    try:
+        body = await request.json()
+    except Exception:
+        return _err(400, "请求体不是合法JSON")
+    if not isinstance(body, dict):
+        return _err(400, "请求体须为JSON对象")
+    char = str(body.get("char_id") or "").strip()
+    seq = body.get("seq")
+    if char not in CHARS or not str(seq).strip().isdigit():
+        return _err(400, "参数不合法")
+
+    def _store():
+        with db() as conn:
+            r = conn.execute(
+                "SELECT seq FROM messages WHERE seq=? AND char_id=? AND role='user'",
+                (int(seq), char)).fetchone()
+            if not r:
+                return None
+            # 审计P0-2: 在途守卫——同user_seq已有pending/running job直接拒(防重复消费)
+            j_now = conn.execute(
+                "SELECT id FROM jobs WHERE char_id=? AND user_seq=? "
+                "AND status IN ('pending','running') LIMIT 1",
+                (char, int(seq))).fetchone()
+            if j_now:
+                return -1
+            # 审计P0-2: 只允许重试终败消息(meta.error存在), 防隐性重发
+            mrow = conn.execute("SELECT meta FROM messages WHERE seq=?",
+                                (int(seq),)).fetchone()
+            try:
+                mmeta = json.loads(mrow["meta"]) if mrow and mrow["meta"] else {}
+            except Exception:
+                mmeta = {}
+            if not (isinstance(mmeta, dict) and mmeta.get("error")):
+                return -2
+            j = conn.execute(
+                "SELECT img_seqs FROM jobs WHERE char_id=? AND user_seq=? "
+                "ORDER BY id DESC LIMIT 1", (char, int(seq))).fetchone()
+            img_seqs = (j["img_seqs"] if j and j["img_seqs"] else "") or ""
+            keep = [s for s in img_seqs.split(",") if s.strip().isdigit()]
+            if keep:
+                q = ",".join("?" * len(keep))
+                rows = conn.execute(
+                    "SELECT seq FROM messages WHERE seq IN (%s) AND char_id=? "
+                    "AND role='user' AND kind='image_in'" % q,
+                    [int(s) for s in keep] + [char]).fetchall()
+                keep = [str(x["seq"]) for x in rows]
+            cur = conn.execute(
+                "INSERT INTO jobs(char_id, status, user_seq, img_seqs, created) "
+                "VALUES (?, 'pending', ?, ?, ?)",
+                (char, int(seq), ",".join(keep), time.time()))
+            return cur.lastrowid
+    job_id = await asyncio.to_thread(_store)
+    if job_id is None:
+        return _err(404, "消息不存在或非用户消息")
+    if job_id == -1:   # P0-2: 在途守卫
+        return _err(409, "该消息已有任务在途, 请稍候")
+    if job_id == -2:   # P0-2: 非终败消息不可重试
+        return _err(400, "该消息无失败标记, 无需重试")
+    _wake(char).set()
+    return JSONResponse({"ok": True, "job_id": job_id}, status_code=202)
 
 
 @app.get("/api/worldbook")
@@ -836,6 +1162,26 @@ async def worldbook_put(request: Request):
 @app.get("/")
 async def index():
     return FileResponse(os.path.join(WEB_DIR, "index.html"))
+
+
+@app.get("/manifest.json")   # M4 PWA
+def manifest_ep():
+    return FileResponse(os.path.join(WEB_DIR, "manifest.json"),
+                        media_type="application/manifest+json")
+
+
+@app.get("/apple-touch-icon.png")
+def apple_icon_ep():
+    return FileResponse(os.path.join(WEB_DIR, "icons", "192.png"),
+                        media_type="image/png")
+
+
+@app.get("/icons/{name}")           # M4 PWA图标
+def icons_ep(name: str):
+    fp = os.path.join(WEB_DIR, "icons", os.path.basename(name))
+    if not os.path.isfile(fp):
+        return _err(404, "图标不存在")
+    return FileResponse(fp, media_type="image/png")
 
 
 os.makedirs(MEDIA_DIR, exist_ok=True)   # B3: 无条件挂载, 非main入口跑(如uvicorn直启)不丢媒体路由

@@ -49,3 +49,10 @@
 - OC审计(GLM-5.3):P0×2+P1×7+P2×9;修P0全+P1×5+P2×6共13处(att_del双消/uuid防撞/realpath防穿越/魔数+预检/gen_log游标/硬上限4/meta合并/半截m4a清理/renderAtt createElement/限3张/closeChat孤儿清理);暂缓P1-6/P2-8/P2-4→切片4
 - 验证:py_compile+新鲜库单测(穿越拒/游标去重/上限封顶)+活体E2E(假图400/空400/att_del双删/越权false/文本冒烟202)+浏览器行为测试(DataTransfer注入File→×撤回→库行+文件双消 seq37)
 - commit 9b22c3f(416+/13-);审计报告归档`审计_切片3_gstack_1027.md`;handoff重写=切片4施工单(不入库)
+
+
+## 2026-10-27 Session 5(切片4:打磨+背景+审计修复)
+- **交付**:PWA(manifest/icons/theme #111118)+历史上滑分页(游标 before_seq+scrollTop<60)+失败重试全链(红!pill/err_seqs 协议/retry 双守卫/防抖)+oMLX 退避(5s/15s×3)+背景自定义(none/色/图,8MB 双限,只留最新)+B6/B7/B8/B10+P1-6/P2-8/P2-4 移交项全清
+- **审计**:diff+manifest 全内联进 prompt 重跑(gstack GLM-5.3;首跑越界读 GA 主程序被沙箱拒杀——材料内联是唯一活路);报告 `审计_切片4_gstack_1027.md`;P0×2+P1×2 全修,P2×9 修 7 留 2(永久取舍见 task_plan Notes)
+- **验证方法论(本次新武器)**:①离线沙盒=拷 chatapp.py+chat.db 到 /tmp,CHAT_ROOT 随文件目录走,TestClient 不进 lifespan(worker 不启,假 job 不会被真 agent 消费);②打靶解释器必须用 GA runtime python(系统 /usr/bin/python3.9 的 starlette/httpx 错配 TestClient 直接崩);③浏览器侧 reload 后 typeof/theme-color 探版本再测
+- **坑**:①worker 每 5s 扫 pending 表——生产库插假 job 必被真消费,严禁;②node --check 不吃 .html,提 <script> 块另存 .js;③grep 对账别忘源码里表达式带空格("len(raw) > 8 * 1024 * 1024"搜"8*1024"零命中≠未修);④file_patch 的 old_content 手打必错,从文件原样复制

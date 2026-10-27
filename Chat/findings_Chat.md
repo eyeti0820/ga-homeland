@@ -63,3 +63,26 @@ D1 全媒体复用 / D2 共享世界书 / D3 手写仿微信 / D4 标点切泡(<
 - **测试断言先自查**:T3"6图→4行"断言误&&上notes token数→假FAIL;库内COUNT才是真相
 - **afconvert失败留半截**:rc!=0也要unlink输出,防下次误判
 - **审计报告归档命名**:audit_out.md→`审计_切片3_gstack_1027.md`(与前两切片一致,入库);research_切片3.md/temp_build_notes.md留本地不入
+
+
+## 2026-10-27 热修(主人报:内存挤爆时昼聊喷轨迹+400原文)
+- **上游LLM 400(oMLX内存guard)原文+工具轨迹会被Gemma整段复读成"done回复"**(1405字轨迹+!!!Error原文直接入库展示)→入库口拦截:`raw.find("!!!Error:")`先`_emit_reply_media`抢救已产媒体再raise(转system"信号不好");`raw.find("🛠️ Tool:")`截头只留轨迹前真实文本(取舍:轨迹后文本会丢,复读场景真实文本总在轨迹前,seq43验证正常回复不受伤)
+- **"图问号/语音播不了"假警报**:文件本身完好(JPEG/m4a魔数全对,Range=206 iOS可播),是当时内存挤爆的加载失败;排查先验文件+魔数+HTTP再下结论
+- **kickstart正确语法**:`launchctl kickstart -k gui/501/com.ga.chatapp`(uid须数字;args列表模式$(id -u)不展开会报Unrecognized target)
+- **重启验证看进程不看health**:`ps -eo pid,lstart` 对 PID 启动时刻,/api/health 无法证明新代码已加载
+- **复读会通过agent历史污染后续几轮**(上轮轨迹入了agent上下文)→截断后需一轮纯文本对话洗回正轨(seq43实测正常)
+
+## 2026-10-27 热修-2(电脑端媒体裂,手机正常)
+- **媒体src必须与API同走BASE拼接**: 入口不唯一(127.0.0.1:8789/chat/、ts.net/chat等)时,裸`src=msg.media_path`在部分通道404(电脑Chrome /chat入口裂,手机正常)→5处统一`BASE+media_path`(气泡图/语音/renderAtt预览/zoomImg大图);服务端middleware剥/chat前缀故/media与/chat/media双路由皆200,前端拼BASE后两通道等价
+- **vision识图全文直接渲染太吵**(主人嫌)→改短标"👁 已识图"(全文仍在DB meta)
+- **710B小JPEG合法却曾被判broken**:80x60 JFIF+EOI完整,PIL/sips双解码OK→当时是瞬时加载失败;排查媒体先验魔数+完整解码再下结论,勿只信naturalWidth
+
+
+## 2026-10-27 Session 5(切片4架构事实)
+1. **err_seqs 协议(P0-1 修复核心)**:poll 返回 err_seqs=[{seq,error}] 后端真源;前端 errPills{seq→el}+syncErrPills 双向对齐(缺则插 .errPill 于 row 后,多则删);重试成功 _clear_error_hint 连带软删"点红!重试"system 行(err_sys_seq 存 user meta)
+2. **retry 双守卫(P0-2)**:meta 无 error→400"该消息没有失败记录";同 user_seq 有 pending job→409"上一条重试还在进行中";正常→202 accepted(job 落库 B6 事件唤醒 worker)
+3. **B6 事件唤醒**:worker await _wake(char).wait() timeout 5s——有 job 即醒,空转零轮询;retry/send 落库后 _wake(char).set()
+4. **B10 滚动压缩**:超限 agent 存 _RETIRED 不再复用(下次构建新实例),_agent_ctx_chars 统计 llmclient.backend.history(list 快照防遍历竞态);旧实例留档告警日志
+5. **背景链路**:/api/config GET(bg 值)+bg_set POST(none/color/image);色值 fullmatch #hex{3|4|6|8};图 8MB 预检+读后双限,存 media/bg 时间戳名只留最新;meta 键 _BG_META_KEY 全局共享(五角色同一背景)
+6. **oMLX 退避**:worker 内 attempt 循环,可重试类 5s/15s 共 3 次;4xx(参数/内存 guard)不重试直接 _mark_user_error
+7. **审计工作流终版**:subprocess.Popen(cwd=repo)+stdout 落 log;被审 diff/manifest/文件全部内联进 prompt(外部路径会被沙箱越界拒杀);报告去 ANSI 归档

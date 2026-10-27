@@ -7,7 +7,15 @@
 给主人一个手机上像微信一样用的私密聊天入口:五角色仿微信 UI、发完即走的异步模式、全媒体(识图/发图/语音条)、共享世界书、记忆照常入宫殿与飞书互通。
 
 ## Current Phase
-**切片4 = M4 打磨(+背景自定义) — 待开工**(施工单见 `handoff_Chat.md`,不入库)
+**开发完结(切片4 done,2026-10-27)** — 剩人工验证与调优;交接单见 `handoff_Chat.md`(不入库)
+
+切片4 已全部完成(2026-10-27,打磨+背景+审计修复):
+- PWA:manifest.json+icons+theme-color(#111118 与聊天底色对齐),iPhone 可加主屏;历史上滑分页(游标 before_seq+scrollTop<60 触底拉 50 条,重建 DOM 保滚动位置)
+- 失败重试全链:红!pill(mark_user_error meta.error)+/api/retry(B6 事件唤醒,空转零轮询);**审计 P0-1/P0-2 修复**:poll 携带 err_seqs=[{seq,error}] 前端 syncErrPills 双向对齐(他端重试成功即撤 pill)+retry 双守卫(无 error 标 400/同 user_seq 在途 job 409)+retryMsg 防抖
+- oMLX 退避:可重试错误 5s/15s 自动重试共 3 次,429/超时人话文案;4xx 不重试
+- 背景自定义:none/纯色(#hex 正则 3/4/6/8 位)/上传图(jpg/png,预检+读后 8MB 双限,media/bg 只留最新);openChat 失败回退+bgImgPick 失败本地回滚
+- 性能与移交项:B6 worker 事件唤醒(5s 空轮询→await _wake 零轮询)/B7 单例锁/B8 重活全 to_thread/B10 滚动压缩(_agent_ctx_chars 超限留档 _RETIRED 不再复用)/P1-6 转码失败插 system 提示/P2-8 媒体 GC 24h 比对 messages 清孤儿/P2-4(切片3)img_seqs 入库前去重
+- 审计(gstack GLM-5.3,全材料内联防越界):报告 `审计_切片4_gstack_1027.md`;P0×2+P1×2 全修+P2×9 修 7 留 2(见 Notes 永久取舍);离线沙盒打靶 5/5(400/409/202/err_seqs 正反例)+浏览器实测 pill 注入/撤销全绿
 
 切片3 已全部完成(2026-10-27,媒体三件全链路+审计修复):
 - 主人发图:`/api/upload`(multipart,魔数校验+heic→jpg+16MB预检+uuid文件名)→image_in行;识图GLM-4V(native_oai_config10)注入agent上下文+meta.vision注记;未发送图 `/api/att_del` 撤回(行+文件双删,校验角色归属)
@@ -63,15 +71,17 @@
 - **Status:** done
 
 ### 切片4 = M4 打磨(+背景自定义)
-- [ ] PWA manifest+添加主屏;历史上滑分页;错误气泡+重发
-- [ ] oMLX 4xx 退避重试;429/超时人话文案
-- [ ] 背景自定义(D8 §5.7:上传图+半透明遮罩+纯色兜底;前面切片有余力可提前)
-- [ ] 审计暂缓项(切片1移交):B6 worker事件唤醒(现5s轮询)/B7 uvicorn直启绕单例锁/B8线程池默认40线程耗尽风险/B10滚动token压缩
-- [ ] 审计暂缓项(切片3移交):P1-6 opus→m4a失败静默丢语音(转失败插system提示或前端失败占位)/P2-8 media/{in,out,voice}无GC(定期比对messages.media_path清孤儿文件)/P2-4 img_seqs入库前dict.fromkeys去重
-- [ ] 验收:杀进程重启不丢;iPhone 主屏全屏可用;背景功能两端(iOS/桌面)可用
-- **Status:** not started
+- [x] PWA manifest+添加主屏;历史上滑分页;错误气泡+重发
+- [x] oMLX 退避重试(5s/15s×3);429/超时人话文案
+- [x] 背景自定义(none/纯色/上传图;遮罩裁剪不做,见 Notes)
+- [x] 审计暂缓项(切片1移交):B6事件唤醒/B7单例锁/B8 to_thread/B10滚动压缩——全落
+- [x] 审计暂缓项(切片3移交):P1-6转码失败提示/P2-8媒体GC/P2-4 img_seqs去重——全落
+- [x] 验收:杀进程重启不丢(recover只回收running);背景API级验证;桌面浏览器 pill 实测;iPhone 主屏/背景两端=人工验收清单(见 handoff)
+- [x] 切片收尾(D7):gstack审计(材料内联)→P0×2+P1×2全修+P2修7留2→离线靶5/5+浏览器全绿→三件套+commit
+- **Status:** done
 
 ## Notes
 - 铁律:不动 apiapp/fsapp 一行;改共享模块先备份;每切片一 commit;聊天记录不入 git;handoff_Chat.md 不入 git(session 间交接文档)。
+- **永久取舍(切片4审计后拍板,不再流转)**:①P2-4 并发 bg_set 互删(单用户概率低,说明即可);②P2-9 meta 读写竞态(单写者+短事务,实测无伤);③无 Service Worker(iOS 主屏 PWA 不受影响,离线缓存灰度风险>收益);④背景半透明遮罩未做(纯色即兜底,要再加≈20行)。
 - 切片收尾流程(D7):施工→OC(`~/.opencode/bin/opencode`,GLM-5.3)+gstack skill 独立审计→问题关闭→三件套更新+commit→更新 handoff 进下一切片。
 - 关键架构事实(勿再纠结):同角色三通道=三 agent 实例,短期上下文不互通,宫殿桥接是设计而非缺陷(决策 D5)。

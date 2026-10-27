@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#111118">   <!-- 审计P2-7②: 与manifest对齐 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chat">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/192.png">
+<link rel="apple-touch-icon" href="icons/180.png">
 <title>Chat</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -90,6 +97,20 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
 #wbCancel{background:#f2f2f2;color:#111}
 #wbSave{background:#07c160;color:#fff}
 #wbSave:disabled{background:#9fd6b5}
+/* ---------- M4: 设置面板/背景/错误重试 ---------- */
+#cfgBtn{position:absolute;right:50px;top:50%;transform:translateY(-50%);font-size:17px;cursor:pointer;line-height:1}
+#chatHeader{position:relative}
+#cfgScreen{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:60}
+#cfgPanel{position:absolute;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+  width:min(92vw,380px);background:#fff;border-radius:12px;padding:14px;font-size:14px;color:#111}
+#cfgPanel h4{margin:0 0 10px;font-size:15px}
+.bgRow{display:flex;gap:8px}
+.bgOpt{flex:1;border:1px solid #ddd;border-radius:8px;padding:9px 0;text-align:center;cursor:pointer;font-size:13px;color:#555}
+.bgOpt.on{border-color:#07c160;color:#07c160;font-weight:600}
+#bgColorSel{width:100%;height:36px;border:1px solid #ddd;border-radius:8px;margin-top:10px;padding:2px;background:#fff}
+#bgImgBtn{width:100%;border:none;border-radius:8px;padding:10px;background:#f2f2f2;margin-top:10px;font-size:13px;cursor:pointer}
+#cfgDone{border:none;border-radius:6px;padding:9px 22px;background:#07c160;color:#fff;font-size:14px;cursor:pointer}
+.errPill{cursor:pointer;background:#ffe9e9;color:#d64545;font-weight:500}
 </style>
 </head>
 <body>
@@ -104,6 +125,7 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
       <div id="backBtn" onclick="closeChat()">‹</div>
       <div id="chatTitle"></div>
       <div id="typingHint">正在输入<span class="d">.</span><span class="d">.</span><span class="d">.</span></div>
+      <span id="cfgBtn" onclick="openCfg()">⚙️</span>
       <div class="avatar" id="chatAvatar" style="width:34px;height:34px;font-size:14px"></div>
     </div>
     <div id="msgArea"></div>
@@ -115,6 +137,20 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
     </div>
     <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="onPicked(this)">
     <div id="imgOverlay" onclick="this.style.display='none'"><img id="imgBig" alt=""></div>
+    <div id="cfgScreen" onclick="if(event.target===this)closeCfg()">
+      <div id="cfgPanel">
+        <h4>会话背景</h4>
+        <div class="bgRow">
+          <div class="bgOpt" id="bgNone" onclick="bgMode('none')">无</div>
+          <div class="bgOpt" id="bgColorOpt" onclick="bgMode('color')">纯色</div>
+          <div class="bgOpt" id="bgImgOpt" onclick="bgMode('image')">自定义图</div>
+        </div>
+        <input type="color" id="bgColorSel" value="#f5f5f5" oninput="bgColor(this.value)">
+        <button id="bgImgBtn" onclick="$('bgImgFile').click()">选择图片…</button>
+        <input type="file" id="bgImgFile" accept="image/*" style="display:none" onchange="bgImgPick(this)">
+        <div style="text-align:right;margin-top:12px"><button id="cfgDone" onclick="closeCfg()">完成</button></div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="toast"></div>
@@ -134,6 +170,7 @@ const CHARS=[
   {id:'qinche',name:'秦彻',color:'#c7515a'}];
 const CMAP={};CHARS.forEach(c=>CMAP[c.id]=c);
 let digest=[],activeChar=null,sinceSeq={},rendered=new Set(),firstSeqInDom={},tick=0,sending=false,loadingHistory=false;
+let errPills={};   /* 审计P0-1: seq->红!pill元素, 与poll.err_seqs对齐 */
 let lastTsShown={};
 const LS_READ='chatapp_read_seq';
 
@@ -275,7 +312,7 @@ function appendRow(cid,msg,stagger){
     d.innerHTML=`<span>${esc(msg.content)}</span>`;area.appendChild(d);
     rendered.add(msg.seq);scrollBottom();return;
   }
-  const row=document.createElement('div');row.className='row '+msg.role;
+  const row=document.createElement('div');row.className='row '+msg.role;row.dataset.seq=msg.seq;
   const av=document.createElement('div');
   av.innerHTML=(msg.role==='user')
     ?`<div class="avatar" style="background:#8a97a8">我</div>`
@@ -284,6 +321,12 @@ function appendRow(cid,msg,stagger){
   const wrap=document.createElement('div');wrap.className='bubbles';row.appendChild(wrap);
   area.appendChild(row);
   const mt=(msg.meta&&typeof msg.meta==='object')?msg.meta:{};
+  if(msg.role==='user'&&mt.error){   /* M4: 失败消息红!pill, 点击重试 */
+    const ep=document.createElement('div');ep.className='sys-pill errPill';
+    ep.textContent='⚠ '+((typeof mt.error==='string'&&mt.error)?mt.error:'回复失败')+' · 点击重试';
+    ep.onclick=()=>retryMsg(cid,msg.seq,ep);area.appendChild(ep);
+    errPills[msg.seq]=ep;
+  }
   if(msg.kind==='image_in'||msg.kind==='image_out'){   /* M3: 图片消息缩略图+识图注记 */
     const b=document.createElement('div');b.className='bubble';
     const im=document.createElement('img');im.className='pic';im.loading='lazy';im.src=BASE+(msg.media_path||'');
@@ -320,12 +363,17 @@ async function openChat(cid){
   $('chatScreen').style.display='flex';
   $('chatTitle').textContent=CMAP[cid].name;
   const ca=$('chatAvatar');ca.style.background=CMAP[cid].color;ca.textContent=CMAP[cid].name.slice(-1);
-  $('msgArea').innerHTML='';rendered=new Set();lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;
+  $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;
+  applyBg();
   try{
-    const r=await api(`/api/poll?char_id=${encodeURIComponent(cid)}&since=0&full=1`);
+    const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=50`);
     applyMsgs(cid,r.msgs,false);
-    $('typingHint').style.display=r.typing?'block':'none';
-  }catch(e){toast('加载失败')}
+    $('typingHint').style.display='none';
+  }catch(e){toast('加载失败');   /* 审计P2-1: 历史失败改拉全量, 防since=0把最旧200条当新消息渲染 */
+    api(`/api/poll?char_id=${encodeURIComponent(cid)}&full=1`)
+      .then(r=>{if(cid===activeChar&&r.msgs)applyMsgs(cid,r.msgs,false)}).catch(()=>{});
+    return;
+  }
   pollOnce();
 }
 function closeChat(){
@@ -337,6 +385,21 @@ function closeChat(){
   $('listScreen').style.display='flex';
   refreshDigest();
 }
+function syncErrPills(list){   /* P0-1: err_seqs=[{seq,error}]与DOM pill双向对齐 */
+  const want=new Set(list.map(x=>x.seq));
+  Object.keys(errPills).forEach(s=>{
+    if(!want.has(+s)){const el=errPills[s];if(el&&el.parentNode)el.remove();delete errPills[s]}
+  });
+  list.forEach(x=>{
+    if(errPills[x.seq])return;
+    const rowEl=document.querySelector('#msgArea .row.user[data-seq="'+x.seq+'"]');
+    if(!rowEl)return;   /* 行不在当前DOM(更早历史), 重进会话由历史渲染补 */
+    const ep=document.createElement('div');ep.className='sys-pill errPill';
+    ep.textContent='⚠ '+((x.error&&typeof x.error==='string')?x.error:'回复失败')+' · 点击重试';
+    ep.onclick=()=>retryMsg(activeChar,x.seq,ep);
+    rowEl.after(ep);errPills[x.seq]=ep;
+  });
+}
 async function pollOnce(){
   if(!activeChar||loadingHistory)return;   /* S1: 历史加载中暂停增量轮询, 完成后下轮补齐, 消息不丢 */
   const cid=activeChar;
@@ -344,6 +407,7 @@ async function pollOnce(){
     const r=await api(`/api/poll?char_id=${encodeURIComponent(cid)}&since=${sinceSeq[cid]||0}`);
     if(cid!==activeChar)return;
     if(r.msgs&&r.msgs.length)applyMsgs(cid,r.msgs,true);
+    if(r.err_seqs)syncErrPills(r.err_seqs);   /* P0-1: 与后端error集对齐(他端重试成功即撤pill) */
     $('typingHint').style.display=r.typing?'block':'none';
   }catch(e){}
 }
@@ -419,6 +483,46 @@ async function sendMsg(){
   sending=false;$('sendBtn').disabled=false;
 }
 
+/* ---------- M4: 会话背景 + 失败重试 ---------- */
+const LS_BG='chatapp_bg';
+function bgState(){try{return JSON.parse(localStorage.getItem(LS_BG)||'{}')}catch(e){return{}}}
+function applyBg(){const el=$('chatScreen');el.style.background='';
+  const c=bgState();
+  if(c.mode==='color')el.style.background=c.value||'#f5f5f5';
+  else if(c.mode==='image'&&c.value)el.style.background='#f5f5f5 url("'+BASE+c.value+'") center/cover no-repeat';}
+function markBg(){const c=bgState(),m=c.mode||'none';
+  $('bgNone').classList.toggle('on',m==='none');
+  $('bgColorOpt').classList.toggle('on',m==='color');
+  $('bgImgOpt').classList.toggle('on',m==='image');
+  $('bgColorSel').style.display=m==='color'?'block':'none';
+  if(c.value)$('bgColorSel').value=c.value;
+  $('bgImgBtn').style.display=m==='image'?'block':'none';}
+function closeCfg(){$('cfgScreen').style.display='none'}
+async function openCfg(){markBg();$('cfgScreen').style.display='block';
+  try{const r=await api('/api/config');if(r.bg&&r.bg.mode){localStorage.setItem(LS_BG,JSON.stringify(r.bg));markBg();applyBg()}}
+  catch(e){}}
+async function fetchBgCfg(){try{const r=await api('/api/config');
+  if(r.bg&&r.bg.mode){localStorage.setItem(LS_BG,JSON.stringify(r.bg));applyBg()}}catch(e){}}
+async function bgPost(fd){try{const r=await api('/api/config/bg',{method:'POST',body:fd,headers:{}});
+    const b=r.bg||r;if(b&&b.mode){localStorage.setItem(LS_BG,JSON.stringify(b));applyBg();markBg();toast('背景已更新')}}
+  catch(e){toast('背景设置失败: '+e.message);throw e}}   /* 审计P2-6: 上抛供调用方回滚 */
+function bgColor(v){const c=bgState();c.mode='color';c.value=v;
+  localStorage.setItem(LS_BG,JSON.stringify(c));applyBg();
+  const fd=new FormData();fd.append('mode','color');fd.append('value',v);bgPost(fd)}
+function bgMode(m){if(m==='image'){$('bgImgFile').value='';$('bgImgFile').click();return}
+  const c=bgState();c.mode=m;localStorage.setItem(LS_BG,JSON.stringify(c));applyBg();markBg();
+  const fd=new FormData();fd.append('mode',m);bgPost(fd)}
+function bgImgPick(inp){const f=inp.files&&inp.files[0];if(!f)return;
+  const prev=localStorage.getItem(LS_BG);   /* 审计P2-6: 失败回滚到上传前 */
+  const c=bgState();c.mode='image';localStorage.setItem(LS_BG,JSON.stringify(c));applyBg();markBg();
+  const fd=new FormData();fd.append('mode','image');fd.append('file',f,f.name);
+  bgPost(fd).catch(()=>{if(prev!==null){localStorage.setItem(LS_BG,prev);applyBg();markBg()}})}
+async function retryMsg(cid,seq,el){   /* 审计P0-2: 防重复点击; 后端另有在途守卫409 */
+  if(el)el.style.pointerEvents='none';
+  try{await api('/api/retry',{method:'POST',body:JSON.stringify({char_id:cid,seq:seq})});
+    if(el)el.remove();toast('已重新发送, 等待回复')}
+  catch(e){if(el)el.style.pointerEvents='';toast('重试失败: '+e.message)}}
+
 /* ---------- 轮询主循环 ---------- */
 setInterval(()=>{
   if(document.hidden)return;
@@ -427,7 +531,7 @@ setInterval(()=>{
   if(tick%2===1||!activeChar)refreshDigest();
 },2500);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollOnce();refreshDigest()}});
-refreshDigest();
+refreshDigest();applyBg();fetchBgCfg();
 </script>
 </body>
 </html>

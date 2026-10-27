@@ -103,6 +103,7 @@ def init_db():
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "in"), exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "bg"), exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_DIR, "avatars"), exist_ok=True)   # 切片5: 角色头像
     os.makedirs(OUT_DIR, exist_ok=True)     # M3: 发图入库
     os.makedirs(VOICE_DIR, exist_ok=True)   # M3: 语音条m4a
     with db() as conn:
@@ -619,6 +620,7 @@ async def _char_worker(char):
 @app.on_event("startup")
 async def _startup():
     init_db()        # B7: uvicorn直启(chatapp:app)也能初始化+恢复(幂等)
+    _bg_migrate_legacy()   # 切片5: 旧全局背景迁移至各角色桶
     recover_jobs()
     asyncio.get_running_loop().set_default_executor(
         ThreadPoolExecutor(max_workers=40))       # B8: 默认线程池40, 防并发饿死
@@ -647,12 +649,15 @@ def _digest():
                 elif r["kind"] == "voice":
                     preview = "[语音]"
                 preview = preview.replace("\n", " ")[:40]
-                out.append({"char_id": c, "name": CHAR_NAMES[c], "last_seq": r["seq"],
+                out.append({"char_id": c, "name": CHAR_NAMES[c],
+                            "avatar": _avatar_path(c), "last_seq": r["seq"],
                             "last_kind": r["kind"], "preview": preview, "last_ts": r["ts"],
                             "typing": False})
             else:
-                out.append({"char_id": c, "name": CHAR_NAMES[c], "last_seq": 0,
-                            "last_kind": None, "preview": "", "last_ts": None, "typing": False})
+                out.append({"char_id": c, "name": CHAR_NAMES[c],
+                            "avatar": _avatar_path(c), "last_seq": 0,
+                            "last_kind": None, "preview": "", "last_ts": None,
+                            "typing": False})
     with db() as conn:
         pend = {r["char_id"]: r["n"] for r in conn.execute(
             "SELECT char_id, COUNT(*) AS n FROM jobs WHERE status IN ('pending','running') "
@@ -885,21 +890,69 @@ def _meta_set(key, value):
                      "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
-_BG_META_KEY = "bg_config"
+_BG_LEGACY_KEY = "bg_config"   # 切片5前全局背景; 启动时迁移至各角色桶后删除
 
 
-def _bg_current():
+def _bg_key(char):
+    return f"bg:{char}"
+
+
+def _bg_current(char):
     try:
-        v = json.loads(_meta_get(_BG_META_KEY) or "{}")
+        v = json.loads(_meta_get(_bg_key(char)) or "{}")
         if isinstance(v, dict) and v.get("mode") in ("none", "color", "image"):
+            if v["mode"] == "color":   # 切片5R: 纯色退役, 遗留桶降级为none
+                return {"mode": "none", "value": ""}
             return {"mode": v["mode"], "value": str(v.get("value") or "")}
     except Exception:
         pass
     return {"mode": "none", "value": ""}
 
 
+def _bg_all():
+    """切片5: 五角色背景 {char_id: {mode, value}}"""
+    return {c: _bg_current(c) for c in CHARS}
+
+
+def _bg_referenced():
+    """切片5: 当前被任一角色引用的背景图绝对路径集合(存图清理/GC共用)"""
+    keep = set()
+    for bg in _bg_all().values():
+        if bg["mode"] == "image" and bg["value"]:
+            fp = _media_fp(bg["value"])
+            if fp:
+                keep.add(os.path.abspath(fp))
+    return keep
+
+
+def _bg_migrate_legacy():
+    """切片5一次性: 旧全局bg_config → 复制到五角色桶, 防升级丢背景"""
+    raw = _meta_get(_BG_LEGACY_KEY)
+    if not raw:
+        return
+    try:
+        v = json.loads(raw)
+        assert isinstance(v, dict) and v["mode"] in ("none", "color", "image")
+    except Exception:
+        v = {"mode": "none", "value": ""}
+    for c in CHARS:
+        m = "none" if v["mode"] == "color" else v["mode"]   # 切片5R: 纯色退役
+        _meta_set(_bg_key(c), json.dumps(
+            {"mode": m, "value": str(v.get("value") or "")},
+            ensure_ascii=False))
+    with db() as conn:
+        conn.execute("DELETE FROM meta WHERE key=?", (_BG_LEGACY_KEY,))
+    print(f"[chatapp] bg迁移: legacy->{len(CHARS)}桶 mode={v['mode']}", flush=True)
+
+
+def _avatar_path(cid):
+    """切片5: 头像存在才返回/media路径, 前端无图时回退色块"""
+    fp = os.path.join(MEDIA_DIR, "avatars", f"{cid}.jpg")
+    return f"/media/avatars/{cid}.jpg" if os.path.isfile(fp) else ""
+
+
 def _media_gc():
-    """P2-8: 删除无引用媒体(in/out/voice/bg, age>1h); 当前背景图豁免; 返回删除数"""
+    """P2-8: 删除无引用媒体(in/out/voice/bg, age>1h); 各角色当前背景图豁免; 返回删除数"""
     keep = set()
     with db() as conn:
         for r in conn.execute(
@@ -907,11 +960,7 @@ def _media_gc():
             fp = _media_fp(r["media_path"])
             if fp:
                 keep.add(os.path.abspath(fp))
-    bg = _bg_current()
-    if bg["mode"] == "image" and bg["value"]:
-        fp = _media_fp(bg["value"])
-        if fp:
-            keep.add(os.path.abspath(fp))
+    keep |= _bg_referenced()   # 切片5: 所有角色当前背景图均豁免
     n, now = 0, time.time()
     for sub in ("in", "out", "voice", "bg"):
         d = os.path.join(MEDIA_DIR, sub)
@@ -1019,13 +1068,13 @@ async def _bg_gc_loop():
 
 @app.get("/api/config")
 def config_get():
-    """M4: 前端启动拉取背景等配置"""
-    return {"bg": _bg_current()}
+    """切片5: 前端启动拉取各角色背景+用户头像"""
+    return {"bg_all": _bg_all(), "avatar_user": _avatar_path("user")}
 
 
 @app.post("/api/config/bg")
 async def bg_set(request: Request):
-    """M4: 会话背景 none|color|image; image=multipart(file), 存media/bg/只留最新一张"""
+    """M4: 会话背景 none|image; image=multipart(file), 存media/bg/只留最新一张"""
     try:
         cl = int(request.headers.get("content-length") or 0)
         if cl > 8 * 1024 * 1024:
@@ -1033,15 +1082,14 @@ async def bg_set(request: Request):
         form = await request.form()
     except Exception:
         return _err(400, "请求体须为multipart/form-data")
+    char = str(form.get("char_id") or "").strip()
+    if char not in CHARS:   # 切片5: 背景按角色分桶
+        return _err(400, "char_id须为: " + "/".join(CHARS))
     mode = str(form.get("mode") or "").strip()
-    if mode not in ("none", "color", "image"):
-        return _err(400, "mode须为 none/color/image")
+    if mode not in ("none", "image"):   # 切片5R: 纯色已退役
+        return _err(400, "mode须为 none/image")
     value = ""
-    if mode == "color":
-        value = str(form.get("value") or "").strip()
-        if not re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})", value):   # 审计P2-5
-            return _err(400, "value须为十六进制颜色(如 #1a1a2e)")
-    elif mode == "image":
+    if mode == "image":
         f = form.get("file")
         if f is None or isinstance(f, str):
             return _err(400, "image模式须携带file字段")
@@ -1058,18 +1106,25 @@ async def bg_set(request: Request):
                 "png" if raw[:4] == b"\x89PNG" else "jpg")
             with open(os.path.join(d, name), "wb") as w:
                 w.write(raw)
-            for f2 in os.listdir(d):   # 只留最新一张
-                if f2 != name:
-                    try:
-                        os.unlink(os.path.join(d, f2))
-                    except OSError:
-                        pass
             return name
         name = await asyncio.to_thread(_save_bg)
         value = f"/media/bg/{name}"
-    await asyncio.to_thread(_meta_set, _BG_META_KEY,
+    await asyncio.to_thread(_meta_set, _bg_key(char),
                             json.dumps({"mode": mode, "value": value},
                                        ensure_ascii=False))
+    keep = _bg_referenced()   # 切片5R: 落库后算引用, 无人引用的旧图即回收
+    def _gc_bg():
+        d = os.path.join(MEDIA_DIR, "bg")
+        if not os.path.isdir(d):
+            return
+        for f2 in os.listdir(d):
+            fp = os.path.abspath(os.path.join(d, f2))
+            if fp not in keep:
+                try:
+                    os.unlink(fp)
+                except OSError:
+                    pass
+    await asyncio.to_thread(_gc_bg)
     return {"ok": True, "bg": {"mode": mode, "value": value}}
 
 

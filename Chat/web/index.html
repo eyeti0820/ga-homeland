@@ -30,6 +30,7 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
 .char-row+.char-row{border-top:1px solid #f2f2f2}
 .avatar{width:44px;height:44px;border-radius:6px;color:#fff;font-size:18px;display:flex;align-items:center;
   justify-content:center;flex:none;font-weight:600}
+.avatarImg{width:100%;height:100%;border-radius:6px;object-fit:cover;display:block}   /* 切片5: 图片头像 */
 .crow-mid{flex:1;min-width:0}
 .crow-name{font-size:16px;font-weight:500}
 .crow-preview{font-size:13px;color:#999;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -107,7 +108,6 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
 .bgRow{display:flex;gap:8px}
 .bgOpt{flex:1;border:1px solid #ddd;border-radius:8px;padding:9px 0;text-align:center;cursor:pointer;font-size:13px;color:#555}
 .bgOpt.on{border-color:#07c160;color:#07c160;font-weight:600}
-#bgColorSel{width:100%;height:36px;border:1px solid #ddd;border-radius:8px;margin-top:10px;padding:2px;background:#fff}
 #bgImgBtn{width:100%;border:none;border-radius:8px;padding:10px;background:#f2f2f2;margin-top:10px;font-size:13px;cursor:pointer}
 #cfgDone{border:none;border-radius:6px;padding:9px 22px;background:#07c160;color:#fff;font-size:14px;cursor:pointer}
 .errPill{cursor:pointer;background:#ffe9e9;color:#d64545;font-weight:500}
@@ -139,13 +139,12 @@ body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;backgro
     <div id="imgOverlay" onclick="this.style.display='none'"><img id="imgBig" alt=""></div>
     <div id="cfgScreen" onclick="if(event.target===this)closeCfg()">
       <div id="cfgPanel">
-        <h4>会话背景</h4>
+        <h4>会话背景 <span style="font-size:12px;color:#888;font-weight:400">按角色独立设置</span></h4>
+        <div id="bgCharRow" style="margin-bottom:6px"></div>
         <div class="bgRow">
           <div class="bgOpt" id="bgNone" onclick="bgMode('none')">无</div>
-          <div class="bgOpt" id="bgColorOpt" onclick="bgMode('color')">纯色</div>
           <div class="bgOpt" id="bgImgOpt" onclick="bgMode('image')">自定义图</div>
         </div>
-        <input type="color" id="bgColorSel" value="#f5f5f5" oninput="bgColor(this.value)">
         <button id="bgImgBtn" onclick="$('bgImgFile').click()">选择图片…</button>
         <input type="file" id="bgImgFile" accept="image/*" style="display:none" onchange="bgImgPick(this)">
         <div style="text-align:right;margin-top:12px"><button id="cfgDone" onclick="closeCfg()">完成</button></div>
@@ -169,6 +168,12 @@ const CHARS=[
   {id:'qiyu',name:'祁煜',color:'#e8834f'},
   {id:'qinche',name:'秦彻',color:'#c7515a'}];
 const CMAP={};CHARS.forEach(c=>CMAP[c.id]=c);
+function avatarHtml(cid,sz){const c=CMAP[cid]||{};   /* 切片5: 优先图片头像, 无则文字兜底 */
+  return (c.avatar?`<img class="avatarImg" src="${BASE+c.avatar}" style="width:${sz}px;height:${sz}px" alt="${esc(c.name||cid)}">`
+    :`<div class="avatar" style="background:${c.color};width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.4)}px">${esc((c.name||cid).slice(-1))}</div>`)}
+function avatarUser(sz){
+  return (USER_AV?`<img class="avatarImg" src="${BASE+USER_AV}" style="width:${sz}px;height:${sz}px" alt="我">`
+    :`<div class="avatar" style="background:#8a97a8;width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.4)}px">我</div>`)}
 let digest=[],activeChar=null,sinceSeq={},rendered=new Set(),firstSeqInDom={},tick=0,sending=false,loadingHistory=false;
 let errPills={};   /* 审计P0-1: seq->红!pill元素, 与poll.err_seqs对齐 */
 let lastTsShown={};
@@ -282,7 +287,7 @@ function renderList(){
     if(kw&&!c.name.includes(kw))return;
     const unread=Math.max(0,(c.last_seq||0)-(m[c.id]||0));
     const row=document.createElement('div');row.className='char-row';
-    row.innerHTML=`<div class="avatar" style="background:${CMAP[c.id].color}">${esc(c.name.slice(-1))}</div>
+    row.innerHTML=avatarHtml(c.id,44)+`
       <div class="crow-mid"><div class="crow-name">${esc(c.name)}</div>
       <div class="crow-preview${c.typing?' typing':''}">${esc(c.typing?'对方正在输入…':(c.preview||'开始聊天'))}</div></div>
       <div class="crow-right"><div class="crow-time">${c.last_ts?fmtTime(c.last_ts):''}</div>
@@ -293,6 +298,7 @@ function renderList(){
 }
 async function refreshDigest(){
   try{const r=await api('/api/chars');digest=r.chars.map(c=>({...c,id:c.char_id}));
+    digest.forEach(c=>{if(CMAP[c.id])Object.assign(CMAP[c.id],c)});   /* 切片5: 回写avatar等字段 */
     if(!activeChar)renderList();
     else{const d=digest.find(x=>x.char_id===activeChar);
       if(d)$('typingHint').style.display=d.typing?'block':'none'}
@@ -314,9 +320,7 @@ function appendRow(cid,msg,stagger){
   }
   const row=document.createElement('div');row.className='row '+msg.role;row.dataset.seq=msg.seq;
   const av=document.createElement('div');
-  av.innerHTML=(msg.role==='user')
-    ?`<div class="avatar" style="background:#8a97a8">我</div>`
-    :`<div class="avatar" style="background:${CMAP[cid].color}">${esc(CMAP[cid].name.slice(-1))}</div>`;
+  av.innerHTML=(msg.role==='user')?avatarUser(38):avatarHtml(cid,38);   /* 切片5: 图片头像 */
   row.appendChild(av.firstChild);
   const wrap=document.createElement('div');wrap.className='bubbles';row.appendChild(wrap);
   area.appendChild(row);
@@ -362,8 +366,7 @@ async function openChat(cid){
   $('listScreen').style.display='none';
   $('chatScreen').style.display='flex';
   $('chatTitle').textContent=CMAP[cid].name;
-  const ca=$('chatAvatar');ca.style.background=CMAP[cid].color;ca.textContent=CMAP[cid].name.slice(-1);
-  $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;
+  $('chatAvatar').innerHTML=avatarHtml(cid,34);   /* 切片5: 图片头像 */
   applyBg();
   try{
     const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=50`);
@@ -483,38 +486,46 @@ async function sendMsg(){
   sending=false;$('sendBtn').disabled=false;
 }
 
-/* ---------- M4: 会话背景 + 失败重试 ---------- */
-const LS_BG='chatapp_bg';
-function bgState(){try{return JSON.parse(localStorage.getItem(LS_BG)||'{}')}catch(e){return{}}}
-function applyBg(){const el=$('chatScreen');el.style.background='';
-  const c=bgState();
-  if(c.mode==='color')el.style.background=c.value||'#f5f5f5';
-  else if(c.mode==='image'&&c.value)el.style.background='#f5f5f5 url("'+BASE+c.value+'") center/cover no-repeat';}
-function markBg(){const c=bgState(),m=c.mode||'none';
+/* ---------- M4: 会话背景(切片5: 按角色分桶) + 失败重试 ---------- */
+const LS_BG='chatapp_bg_all';
+let bgCfgChar=null;   /* 切片5: 设置面板当前配置的目标角色 */
+let USER_AV='';       /* 切片5: 我的头像(/api/config.avatar_user) */
+function bgAll(){try{return JSON.parse(localStorage.getItem(LS_BG)||'{}')}catch(e){return{}}}
+function bgState(cid){return bgAll()[cid||activeChar]||{mode:'none',value:''}}
+function bgSave(cid,c){const a=bgAll();a[cid||activeChar]=c;localStorage.setItem(LS_BG,JSON.stringify(a))}
+function applyBg(cid){const el=$('chatScreen');el.style.background='';
+  const c=bgState(cid);
+  if(c.mode==='image'&&c.value)el.style.background='#f5f5f5 url("'+BASE+c.value+'") center/cover no-repeat';}
+function markBg(){const c=bgState(bgCfgChar),m=(c.mode==='color')?'none':(c.mode||'none');   /* 切片5R: 纯色退役, 遗留桶当none */
   $('bgNone').classList.toggle('on',m==='none');
-  $('bgColorOpt').classList.toggle('on',m==='color');
   $('bgImgOpt').classList.toggle('on',m==='image');
-  $('bgColorSel').style.display=m==='color'?'block':'none';
-  if(c.value)$('bgColorSel').value=c.value;
-  $('bgImgBtn').style.display=m==='image'?'block':'none';}
+  $('bgImgBtn').style.display=m==='image'?'block':'none'}
+function buildBgCharRow(){const r=$('bgCharRow');if(!r)return;let h='';
+  CHARS.forEach(c=>{const sel=(c.id===bgCfgChar);
+    h+=`<span data-c="${c.id}" onclick="bgPickChar('${c.id}')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:14px;cursor:pointer;border:1.5px solid ${sel?CMAP[c.id].color:'transparent'};font-size:13px">${avatarHtml(c.id,20)}${c.name}</span>`});
+  r.innerHTML=h}
+function bgPickChar(cid){bgCfgChar=cid;buildBgCharRow();markBg()}
 function closeCfg(){$('cfgScreen').style.display='none'}
-async function openCfg(){markBg();$('cfgScreen').style.display='block';
-  try{const r=await api('/api/config');if(r.bg&&r.bg.mode){localStorage.setItem(LS_BG,JSON.stringify(r.bg));markBg();applyBg()}}
+async function openCfg(){bgCfgChar=activeChar||CHARS[0].id;buildBgCharRow();markBg();$('cfgScreen').style.display='block';
+  try{const r=await api('/api/config');if(r.avatar_user)USER_AV=r.avatar_user;
+    if(r.bg_all){localStorage.setItem(LS_BG,JSON.stringify(r.bg_all));markBg();applyBg()}}
   catch(e){}}
 async function fetchBgCfg(){try{const r=await api('/api/config');
-  if(r.bg&&r.bg.mode){localStorage.setItem(LS_BG,JSON.stringify(r.bg));applyBg()}}catch(e){}}
-async function bgPost(fd){try{const r=await api('/api/config/bg',{method:'POST',body:fd,headers:{}});
-    const b=r.bg||r;if(b&&b.mode){localStorage.setItem(LS_BG,JSON.stringify(b));applyBg();markBg();toast('背景已更新')}}
+  if(r.avatar_user)USER_AV=r.avatar_user;
+  if(r.bg_all){localStorage.setItem(LS_BG,JSON.stringify(r.bg_all));try{localStorage.removeItem('chatapp_bg')}catch(e){}}
+  applyBg()}catch(e){}}
+async function bgPost(fd){fd.append('char_id',bgCfgChar||activeChar||CHARS[0].id);
+  try{const r=await api('/api/config/bg',{method:'POST',body:fd,headers:{}});
+    const b=(r.bg&&r.bg.mode!==undefined)?r.bg:r;
+    if(b&&b.mode!==undefined){bgSave(bgCfgChar,b);applyBg();markBg();toast('背景已更新')}}
   catch(e){toast('背景设置失败: '+e.message);throw e}}   /* 审计P2-6: 上抛供调用方回滚 */
-function bgColor(v){const c=bgState();c.mode='color';c.value=v;
-  localStorage.setItem(LS_BG,JSON.stringify(c));applyBg();
-  const fd=new FormData();fd.append('mode','color');fd.append('value',v);bgPost(fd)}
-function bgMode(m){if(m==='image'){$('bgImgFile').value='';$('bgImgFile').click();return}
-  const c=bgState();c.mode=m;localStorage.setItem(LS_BG,JSON.stringify(c));applyBg();markBg();
+function bgMode(m){const cid=bgCfgChar;
+  if(m==='image'){$('bgImgFile').value='';$('bgImgFile').click();return}
+  const c={mode:m,value:''};bgSave(cid,c);applyBg();markBg();
   const fd=new FormData();fd.append('mode',m);bgPost(fd)}
 function bgImgPick(inp){const f=inp.files&&inp.files[0];if(!f)return;
-  const prev=localStorage.getItem(LS_BG);   /* 审计P2-6: 失败回滚到上传前 */
-  const c=bgState();c.mode='image';localStorage.setItem(LS_BG,JSON.stringify(c));applyBg();markBg();
+  const cid=bgCfgChar,prev=localStorage.getItem(LS_BG);   /* 审计P2-6: 失败回滚到上传前 */
+  bgSave(cid,{mode:'image'});applyBg();markBg();
   const fd=new FormData();fd.append('mode','image');fd.append('file',f,f.name);
   bgPost(fd).catch(()=>{if(prev!==null){localStorage.setItem(LS_BG,prev);applyBg();markBg()}})}
 async function retryMsg(cid,seq,el){   /* 审计P0-2: 防重复点击; 后端另有在途守卫409 */

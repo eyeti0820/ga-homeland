@@ -85,3 +85,9 @@
 - **永久取舍(切片4审计后拍板,不再流转)**:①P2-4 并发 bg_set 互删(单用户概率低,说明即可);②P2-9 meta 读写竞态(单写者+短事务,实测无伤);③无 Service Worker(iOS 主屏 PWA 不受影响,离线缓存灰度风险>收益);④背景半透明遮罩未做(纯色即兜底,要再加≈20行)。
 - 切片收尾流程(D7):施工→OC(`~/.opencode/bin/opencode`,GLM-5.3)+gstack skill 独立审计→问题关闭→三件套更新+commit→更新 handoff 进下一切片。
 - 关键架构事实(勿再纠结):同角色三通道=三 agent 实例,短期上下文不互通,宫殿桥接是设计而非缺陷(决策 D5)。
+
+### 切片5R(1027下午) 纯色退役+注释泄漏+GC时序 ✅
+- 验收反馈闭环: 头像行注释文字泄漏(模板内嵌注释)摘除; 纯色退役(mode 只认 none|image,前端8刀+后端4刀+DB五桶洗none,遗留color桶读取降级none); GC时序bug修复(keep从落库前移到落库后+无条件GC,旧图/孤儿真回收)
+- UI行为: bgMode('image')直接弹文件框; image态#bgImgBtn=换图入口
+- 验证: API+浏览器DataTransfer全链路(上传→分桶隔离→祁煜屏上屏→复原→GC目录空), color 400
+- 详见 progress_Chat.md 切片5R 节; 备份 GA/temp/bak_slice5_1027

@@ -56,3 +56,15 @@
 - **审计**:diff+manifest 全内联进 prompt 重跑(gstack GLM-5.3;首跑越界读 GA 主程序被沙箱拒杀——材料内联是唯一活路);报告 `审计_切片4_gstack_1027.md`;P0×2+P1×2 全修,P2×9 修 7 留 2(永久取舍见 task_plan Notes)
 - **验证方法论(本次新武器)**:①离线沙盒=拷 chatapp.py+chat.db 到 /tmp,CHAT_ROOT 随文件目录走,TestClient 不进 lifespan(worker 不启,假 job 不会被真 agent 消费);②打靶解释器必须用 GA runtime python(系统 /usr/bin/python3.9 的 starlette/httpx 错配 TestClient 直接崩);③浏览器侧 reload 后 typeof/theme-color 探版本再测
 - **坑**:①worker 每 5s 扫 pending 表——生产库插假 job 必被真消费,严禁;②node --check 不吃 .html,提 <script> 块另存 .js;③grep 对账别忘源码里表达式带空格("len(raw) > 8 * 1024 * 1024"搜"8*1024"零命中≠未修);④file_patch 的 old_content 手打必错,从文件原样复制
+
+
+## 切片5R (1027下午) 纯色背景退役 + 注释泄漏修复 + GC时序bug
+
+- **起因**: 主人验收反馈——①头像行多出一排"/*切片5:图片头像/"文字 ②纯色背景本就不能正常用,直接退役,只留"无/自定义图",保持分角色
+- **注释泄漏**: `web/index.html` L293 row.innerHTML 模板字面量内嵌了 JS 注释,渲染成可见文字 → 注释摘除
+- **纯色退役(前端8刀)**: 纯色按钮/色板 input/#bgColorSel CSS 全删; markBg 去 color 分支+降级(遗留桶 color 当 none); buildBgCharRow 模板行净化
+- **纯色退役(后端4刀)**: bg_set mode 只认 none|image(color 400 拒收); _bg_current/_bg_all 读取时 color 降级 none; 启动 legacy 迁移同步降级
+- **DB清洗**: 5 桶 color→none 一次性洗掉
+- **真bug(GC时序)**: 原 keep=_bg_referenced() 在 _meta_set **之前**算,旧图永远在 keep 里→换图只积不删,"只留最新一张"从未成立; 改为**落库后算引用+无条件GC**(none 退役时旧图也回收), _gc_bg 加 isdir 防御
+- **验证**: py_compile/node --check/API(bg_all 五桶+color 400)/浏览器 DataTransfer 全链路: 选chip→#bgImgFile.files 赋值+change→POST落库→分桶隔离(秦彻不动)→祁煜屏真上屏(url(#f5f5f5 bg_*.png))→复原 none→GC 两轮把孤儿图清到目录空
+- **坑**: ①多刀手术先行删行会使后续行号位移,函数定位用"首行 startswith+尾行 endswith"}"动态找,别信旧行号; ②endswith 判据注意分号在引号内('none';} 不是 'none'}); ③DataTransfer 模拟上传要赋给真 file input(#bgImgFile),触发按钮(#bgImgBtn)没有 files 器官; ④bgMode('image')=直接弹文件选择框,bgImgBtn 只是 image 态的换图入口,不是上传必经路

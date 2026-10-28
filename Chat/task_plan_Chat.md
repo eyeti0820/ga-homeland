@@ -7,7 +7,8 @@
 给主人一个手机上像微信一样用的私密聊天入口:五角色仿微信 UI、发完即走的异步模式、全媒体(识图/发图/语音条)、共享世界书、记忆照常入宫殿与飞书互通。
 
 ## Current Phase
-**切片6 交付完成 (2026-10-27)** — UI精细化打磨(纸纹卡/奶油红语音/行距扩大) + 思维链泄漏行级清扫 + seq46洗库完成。当前服务(127.0.0.1:8789)已热更新常驻，待主人手机端体验验收。
+**切片8 立项完成 (2026-10-28),待施工 = 见面模式(L2状态机) M1 后端状态机**
+切片7已交付(长按删除//new/背景WebP+手机加速,见 handoff_Chat.md §⓪)。切片8~12=见面模式双入口(聊天UI不动+见面小说流),设计方案见 **`开发方案_见面模式.md`**(唯一真相源,§0已拍板D-M1~M6)。原可选方向(语音波形/导出/宫殿面板)顺延,不再列切片8。
 
 切片4 已全部完成(2026-10-27,打磨+背景+审计修复):
 - PWA:manifest.json+icons+theme-color(#111118 与聊天底色对齐),iPhone 可加主屏;历史上滑分页(游标 before_seq+scrollTop<60 触底拉 50 条,重建 DOM 保滚动位置)
@@ -91,3 +92,13 @@
 - UI行为: bgMode('image')直接弹文件框; image态#bgImgBtn=换图入口
 - 验证: API+浏览器DataTransfer全链路(上传→分桶隔离→祁煜屏上屏→复原→GC目录空), color 400
 - 详见 progress_Chat.md 切片5R 节; 备份 GA/temp/bak_slice5_1027
+
+## 2026-10-28 切片8+9 见面模式M1+M2 ✅(commit c165561)
+- **M1 后端(切片8)**: meta KV `meet_state:{char}` + `POST /api/mode`(mode/scene,插mode_evt横幅行,不调LLM) + `_process_job` 每轮注入`[状态:...]`运行时行(自然语时间) + `_proactive_once` meet态trigger/recall分支 + B4式单测 tests/test_slice8_mode.py(48绿) + 重启自愈
+- **M2 见面屏(切片9)**: 列表屏"◆见面"入口 → #meetScreen 小说流(旁白正体m-nar/台词600字重主题色竖条气泡m-say/mode_evt横幅m-band/场景切换菜单pickScene/typing次色闪烁) + 五主题CSS变量(主人钦定色)+羊皮纸方格纸面 + **双流隔离**(聊天屏&digest滤meet行[SQL meta.mode+LIKE兜底],见面屏滤chat行) + meet态下行meta.mode打标(user行按当下mode/assistant行同)
+- 验收: 浏览器实弹8项全绿(入口/开屏/双端排版/DB打标/换景横幅/退出行+KV清理/聊天屏过滤rows=0/真实数据零伤); tests/test_slice9_be.py 11绿; 实测行已清(星回回复留档notes_slice9.md)
+- 方案修订: 开发方案_见面模式.md §4.5(双流隔离推翻§2共享原则/主人钦定"同步别混进聊天界面";聊天屏完全零改动)
+- 遗留→切片10: 五皮肤肉眼验收+暗光可读(主题CSS已在切片9提前落地); 切片11: 生图五角色徽标替换"◆见面"文字按钮+空屏插画
+
+- 用户投诉根因三连: ①上次清库只删seq>=47, seq1-46全量测试残留 ②清手机缓存后LS_READ空, 全局递增seq被当未读→红标46/26 ③服务端空历史时前端不清DOM+骨架缓存→幽灵消息常驻
+- 处置: DB全清42msg/19jobs/meta+seq归零(备份/tmp重启即失); 测试媒体6删(bg/avatars保留); 宫殿5角色删30条测试(裸对话对=测试, USER带【家园·前缀=朋友圈生产流保留; qinche10-22真实互动2对+柠檬水孤条存疑保留); 前端补丁A首装以digest.last_seq播种已读基线+B空历史清屏清缓存; 服务kill精确PID重启(切片7起有内存态); API验证5角色last_seq=0

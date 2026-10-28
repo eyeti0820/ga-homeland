@@ -15,7 +15,7 @@
   服务改8789, 单例锁独立用GA_LOCK_PORT=19544(避开878x段, 防再撞)。
 文件位置事由: GADIR非git仓, 真文件放家园repo Chat/入库; GA运行时经GA_RUNTIME_DIR引用。
 """
-import asyncio, json, os, queue as Q, re, shutil, sqlite3, subprocess, sys, threading, time, uuid
+import asyncio, datetime, json, os, queue as Q, re, shutil, sqlite3, subprocess, sys, threading, time, uuid
 from contextlib import contextmanager
 
 # ---------------- 自举(照apiapp L20-35; 必须在import agentmain之前) ----------------
@@ -38,6 +38,14 @@ CHAT_PORT = int(os.environ.get("CHATAPP_PORT") or "8789")
 LOCK_PORT = int(os.environ.get("GA_LOCK_PORT") or "19544")   # 单例锁(独立于服务端口)
 AGENT_TIMEOUT_SEC = int(os.environ.get("CHATAPP_TIMEOUT") or "900")
 SERVICE_SOURCE = "chatapp"     # put_task source + 宫殿ingest的user_id(转录sessionId=<char>_chatapp)
+
+# --- 主动消息(1027改道, 原fsapp链路): env开关, 双3h静默门, 8-23点 ---
+PROACTIVE = os.environ.get("GA_PROACTIVE", "0").strip() == "1"
+PROACTIVE_CHARS = [s for s in os.environ.get("GA_PROACTIVE_CHARS", "xiazhou").replace(" ", "").split(",") if s]
+PROACTIVE_IDLE_SEC = int(os.environ.get("GA_PROACTIVE_IDLE_SEC") or "10800")
+PROACTIVE_HOUR_START = int(os.environ.get("GA_PROACTIVE_HOUR_START") or "8")
+PROACTIVE_HOUR_END = int(os.environ.get("GA_PROACTIVE_HOUR_END") or "23")   # [8, 23)
+_PROACTIVE_KEY = "proactive"   # meta表键: {char: last_proactive_ts}
 
 CHARS = ["xiazhou", "shenxinghui", "lishen", "qiyu", "qinche"]
 CHAR_NAMES = {"xiazhou": "夏以昼", "shenxinghui": "沈星回", "lishen": "黎深",
@@ -88,7 +96,7 @@ OUT_DIR = os.path.join(MEDIA_DIR, "out")       # 发图从char_media_out搬运�
 CM_OUT_DIR = os.path.join(GA_ROOT, "temp", "char_media_out")   # char_media产物绝对路径(bash工具cwd=GA_ROOT/temp)
 GEN_LOG = os.path.join(CM_OUT_DIR, "gen_log.jsonl")            # char_media逐条追加{ts,char,path,desc}
 VISION_CFG = (os.environ.get("CHAT_VISION_CFG") or "native_oai_config10").strip()  # fsapp同款GLM-4V识图
-_CLONE_CHARS = ("xiazhou", "shenxinghui", "qinche")   # 有云端克隆音色; 黎深/祁煜tts会报错(正常)
+_CLONE_CHARS = ("xiazhou", "shenxinghui", "qinche", "lishen")   # 有云端克隆音色; 1028黎深档案上线; 祁煜tts会报错(正常)
 MEDIA_HINTS = {c: (
     f"[媒体工具修正·{CHAR_NAMES[c]}专属] 本聊天服务五个角色同住一个进程, 你调用 char_media.py 的"
     f" tts/img 命令时, 必须在命令末尾追加 --char={c} "
@@ -639,7 +647,8 @@ async def _process_job(job):
     if img_parts:
         task_text += "\n\n" + "\n\n".join(img_parts)
 
-    dq = agent.put_task(f"{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)
+    # 切片8§3.3: 任务头每轮注入mode状态行(meet/chat两态现读); history旧状态行随trim自然淘汰
+    dq = agent.put_task(f"{_state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)
     start, raw = time.time(), None
     while True:
         try:
@@ -684,7 +693,8 @@ async def _process_job(job):
     _s6 = _scrub_cot(_LLM_RUNNING_RE.sub("", _FILE_TAG_RE.sub("", raw)))   # S6: 无标签英文叙述/命令行清扫
     final = build_done_text(_s6) if _s6.strip() else ""
     final = (final or "").strip()
-    await asyncio.to_thread(_insert_msg, char, "assistant", "text", final or "……")
+    await asyncio.to_thread(_insert_msg, char, "assistant", "text", final or "……",
+                            meta={"mode": _mode_of(char)})   # 切片9: 随行打mode, 前端按屏过滤
     mnote = ""
     try:
         mnote = await asyncio.to_thread(_emit_reply_media, char, raw, start - 2)
@@ -697,6 +707,233 @@ async def _process_job(job):
                 (final + (f"\n{mnote}" if mnote else "")) or mnote)
         except Exception as e:
             print(f"[chatapp] {char}: ingest failed: {e}", flush=True)
+
+
+# --- 主动消息改道(1027): fsapp._proactive_thread同款逻辑搬入Chat, 复用_process_job生成→清洗→入库→ingest管线 ---
+_PROACTIVE_TRIGGER = ("[系统内部触发·主动消息] 用户已超过3小时未发消息。请以你的身份结合此前聊天上下文，"
+                      "主动给用户发一条自然、简短(100字内)的消息：延续之前话题、关心近况或轻松日常皆可。"
+                      "直接输出消息文本本身，不要解释、不要提及系统或本指令、不要调用工具。")
+_PROACTIVE_RECALL_Q = "延续之前话题 关心近况 日常闲聊"
+# 切片8(§3.4): meet态换稿——现场第一人称, 禁"发消息"口吻; chat态维持现词(回归红线)
+_PROACTIVE_TRIGGER_MEET = ("[系统内部触发·主动消息] 你们正处于意识同步(见面)状态，场景：{scene}，"
+                           "用户已超过3小时没有回应(可能睡着了或离开了)。以现场第一人称推进："
+                           "轻声唤她/替她掖被/安静守着/留一张字条皆可，括号内写动作与场景，100字内，"
+                           "不要'发消息'口吻，不要提及系统。")
+
+
+def _pstate():
+    try:
+        return json.loads(_meta_get(_PROACTIVE_KEY) or "{}")
+    except Exception:
+        return {}
+
+
+# ---------------- 切片8: 见面模式L2状态机(M1, 开发方案_见面模式.md §3) ----------------
+# mode不建新表不动消息流: 存meta KV(meet_state:{char}), 用时现读(重启零成本自愈);
+# 每轮任务头注入运行时状态行(§3.3), 主动消息按mode分支(§3.4)。先例: _PROACTIVE_KEY。
+_MEET_KEY_PREFIX = "meet_state:"   # meet_state:{char} -> {"mode":"meet","scene":..,"since":..,"note":..}
+_MODE_RE = re.compile(r"^(?:chat|meet)$")        # B4式单测锁定: mode仅两值
+_SCENE_MAX = 12                                   # 场景名≤12字(§3.2)
+_SCENE_BAD_RE = re.compile(r"[\x00-\x1f\x7f]")   # 场景名禁控制符/换行
+
+
+def _meet_key(char):
+    return _MEET_KEY_PREFIX + char
+
+
+def _get_meet_state(char):
+    """读mode态; 无记录/坏值自愈为chat缺省(§3.1)。返回 {"mode":"chat"} 或meet记录本体。"""
+    try:
+        st = json.loads(_meta_get(_meet_key(char)) or "")
+        if isinstance(st, dict) and st.get("mode") == "meet":
+            return st
+    except Exception:
+        pass
+    return {"mode": "chat"}
+
+
+def _mode_of(char):
+    return _get_meet_state(char).get("mode") or "chat"
+
+
+def _all_modes():
+    """一次读全部角色mode(digest单查用); 无记录/坏值=chat"""
+    out = {c: "chat" for c in CHARS}
+    with db() as conn:
+        for r in conn.execute("SELECT key, value FROM meta WHERE key LIKE ?",
+                              (_MEET_KEY_PREFIX + "%",)):
+            c = r["key"][len(_MEET_KEY_PREFIX):]
+            if c in out:
+                try:
+                    st = json.loads(r["value"] or "")
+                    if isinstance(st, dict) and st.get("mode") == "meet":
+                        out[c] = "meet"
+                except Exception:
+                    pass
+    return out
+
+
+def _fmt_since(ts, now=None):
+    """since时间戳→'始于昨晚23:05·已持续3小时'式自然语(§3.3状态行用)"""
+    now = now or time.time()
+    lt, ln = time.localtime(ts), time.localtime(now)
+    hhmm = time.strftime("%H:%M", lt)
+    d0 = datetime.date(ln.tm_year, ln.tm_mon, ln.tm_mday)
+    d1 = datetime.date(lt.tm_year, lt.tm_mon, lt.tm_mday)
+    n = (d0 - d1).days
+    if n <= 0:
+        when = f"今天{hhmm}"
+    elif n == 1:
+        when = f"{'昨晚' if lt.tm_hour >= 18 or lt.tm_hour < 6 else '昨天'}{hhmm}"
+    elif n == 2:
+        when = f"前天{hhmm}"
+    else:
+        when = time.strftime("%m-%d %H:%M", lt)
+    dur = max(0.0, now - ts)
+    durs = (f"已持续{int(dur // 3600)}小时" if dur >= 3600
+            else (f"已持续{int(dur // 60)}分钟" if dur >= 60 else "刚开始"))
+    return f"始于{when}·{durs}"
+
+
+def _state_line(char, now=None):
+    """每轮现读meta拼状态行(§3.3): trim裁不掉当前态(每轮重注), history旧行自然淘汰"""
+    st = _get_meet_state(char)
+    if st.get("mode") == "meet":
+        parts = ["意识同步中(你们在同一空间, 面对面)"]
+        scene = str(st.get("scene") or "").strip()
+        if scene:
+            parts.append(f"场景:{scene}")
+        try:
+            since = float(st.get("since") or 0)
+        except (TypeError, ValueError):
+            since = 0.0
+        if since > 0:
+            parts.append(_fmt_since(since, now))
+        note = str(st.get("note") or "").strip()
+        if note:
+            parts.append(f"备注:{note}")
+        return "[状态: " + " · ".join(parts) + "]"
+    return "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系]"
+
+
+def _proactive_gates(char, now):
+    """门检: 8-23点 + 有真实用户史 + 双3h静默门(用户/上次主动取较新) + 不忙; 返回(ok, 原因)"""
+    h = time.localtime(now).tm_hour
+    if not (PROACTIVE_HOUR_START <= h < PROACTIVE_HOUR_END):
+        return False, f"hour={h}非活跃时段"
+    with db() as conn:
+        r = conn.execute("SELECT MAX(ts) AS mx, COUNT(*) AS n FROM messages "
+                         "WHERE char_id=? AND role='user'", (char,)).fetchone()
+    if not r or not r["n"]:
+        return False, "无用户史"
+    last_user = float(r["mx"] or 0)
+    last_pro = float(_pstate().get(char, 0) or 0)
+    idle_from = max(last_user, last_pro)
+    if now - idle_from < PROACTIVE_IDLE_SEC:
+        return False, f"静默不足(idle={int(now - idle_from)}s)"
+    with db() as conn:
+        busy = conn.execute("SELECT COUNT(*) AS n FROM jobs WHERE char_id=? AND "
+                            "status IN ('pending','running')", (char,)).fetchone()["n"]
+    if busy:
+        return False, f"jobs忙({busy})"
+    svc = SERVICES.get(char)
+    if svc and svc.agent is not None and getattr(svc.agent, "is_running", False):
+        return False, "agent忙"
+    return True, f"idle={int((now - idle_from) / 60)}min"
+
+
+async def _proactive_once(char):
+    """生成并发送一条主动消息(文本only, 清洗/围栏/ingest与_process_job完全同款)"""
+    svc = _svc(char)
+    agent = await asyncio.to_thread(svc.get_agent)
+    # 切片8§3.4: 按mode分支trigger/recall; gates不动(双3h+时段照旧)
+    st = _get_meet_state(char)
+    meet = st.get("mode") == "meet"
+    scene = str(st.get("scene") or "").strip()
+    trigger = (_PROACTIVE_TRIGGER_MEET.format(scene=scene or "未定") if meet
+               else _PROACTIVE_TRIGGER)
+    recall_q = (f"意识同步 {scene} 最近相处 见面" if meet else _PROACTIVE_RECALL_Q)
+    try:
+        mem = await asyncio.to_thread(svc.ctx.recall, recall_q)
+    except Exception as e:
+        print(f"[chatapp] {char}: proactive recall failed: {e}", flush=True)
+        mem = ""
+    task_text = (f"{mem}\n\n---\n[以上为记忆回响, 以下是本轮任务]\n{trigger}" if mem
+                 else trigger)
+    dq = agent.put_task(f"{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)
+    start, raw = time.time(), None
+    while True:
+        try:
+            item = await asyncio.to_thread(dq.get, True, 1)
+        except Q.Empty:
+            item = None
+        if item and "done" in item:
+            raw = item.get("done", "")
+            break
+        if time.time() - start > AGENT_TIMEOUT_SEC:
+            try:
+                agent.abort()
+            except Exception:
+                pass
+            raise TimeoutError(f"proactive agent超时({AGENT_TIMEOUT_SEC}s)已中止")
+    raw = raw or ""
+    try:
+        _scrub_agent_history(char, svc)
+    except Exception as e:
+        print(f"[chatapp] {char}: proactive CoT洗史失败: {e}", flush=True)
+    if _ERR_FENCE_RE.search(raw):
+        raise RuntimeError("proactive agent内部错误围栏")
+    e_i = raw.find("!!!Error:")
+    if e_i >= 0:
+        detail = " ".join(raw[e_i + 9:e_i + 189].split())[:120]
+        raise RuntimeError(f"proactive 上游错误: {detail}")
+    t_i = raw.find("🛠️ Tool:")
+    if t_i >= 0:
+        raw = raw[:t_i]
+    _s6 = _scrub_cot(_LLM_RUNNING_RE.sub("", _FILE_TAG_RE.sub("", raw)))
+    final = build_done_text(_s6).strip() if _s6.strip() else ""
+    if not final:
+        raise RuntimeError("proactive 产出为空")
+    await asyncio.to_thread(_insert_msg, char, "assistant", "text", final, None,
+                            {"proactive": True, "mode": "meet" if meet else "chat"})   # 切片8: mode随行(切片9横幅用)
+    try:   # 对齐fsapp B1: 主动消息同样入宫殿账本, 触发侧记为系统触发
+        await asyncio.to_thread(svc.ctx.ingest, SERVICE_SOURCE,
+                                "[主动消息·系统触发]", final)
+    except Exception as e:
+        print(f"[chatapp] {char}: proactive ingest failed: {e}", flush=True)
+    return final
+
+
+async def _proactive_loop():
+    if not PROACTIVE or not PROACTIVE_CHARS:
+        print(f"[chatapp] proactive off (GA_PROACTIVE={'1' if PROACTIVE else '0'}, "
+              f"chars={PROACTIVE_CHARS})", flush=True)
+        return
+    print(f"[chatapp] proactive on: chars={PROACTIVE_CHARS} "
+          f"idle={PROACTIVE_IDLE_SEC}s hours={PROACTIVE_HOUR_START}-{PROACTIVE_HOUR_END}",
+          flush=True)
+    while True:
+        try:
+            now = time.time()
+            for char in PROACTIVE_CHARS:
+                if char not in CHARS:
+                    continue
+                ok, why = await asyncio.to_thread(_proactive_gates, char, now)
+                if not ok:
+                    continue
+                print(f"[chatapp] proactive trigger {char} ({why})", flush=True)
+                try:
+                    text = await _proactive_once(char)
+                    print(f"[chatapp] proactive sent {char}: {text[:60]}", flush=True)
+                except Exception as e:
+                    print(f"[chatapp] proactive {char} failed: {e}", flush=True)
+                st = _pstate()
+                st[char] = time.time()   # 成败都记账, 防失败风暴(3h内不再试)
+                await asyncio.to_thread(_meta_set, _PROACTIVE_KEY,
+                                        json.dumps(st, ensure_ascii=False))
+        except Exception as e:
+            print(f"[chatapp] proactive loop error: {e}", flush=True)
+        await asyncio.sleep(60.0)
 
 
 async def _char_worker(char):
@@ -757,6 +994,7 @@ async def _startup():
     for c in CHARS:
         asyncio.create_task(_char_worker(c))
     asyncio.create_task(_bg_gc_loop())
+    asyncio.create_task(_proactive_loop())   # 1027: 主动消息改道Chat
 
 
 # ---------------- API ----------------
@@ -770,8 +1008,12 @@ def _digest():
     out = []
     with db() as conn:
         for c in CHARS:
-            r = conn.execute("SELECT * FROM messages WHERE char_id=? ORDER BY seq DESC LIMIT 1",
-                             (c,)).fetchone()
+            r = conn.execute(   # 切片9: 聊天列表digest只看chat态行(meet行/mode_evt行/历史同步行全滤)
+                "SELECT * FROM messages WHERE char_id=? AND "
+                "COALESCE(json_extract(meta,'$.mode'),'chat')='chat' AND "
+                "json_extract(meta,'$.mode_evt') IS NULL AND "
+                "content NOT LIKE '—— 意识同步%' AND content NOT LIKE '—— 同步结束%' "
+                "ORDER BY seq DESC LIMIT 1", (c,)).fetchone()
             if r:
                 preview = (r["content"] or "").strip()
                 if r["kind"] == "image_in" or r["kind"] == "image_out":
@@ -792,14 +1034,68 @@ def _digest():
         pend = {r["char_id"]: r["n"] for r in conn.execute(
             "SELECT char_id, COUNT(*) AS n FROM jobs WHERE status IN ('pending','running') "
             "GROUP BY char_id").fetchall()}
+    modes = _all_modes()   # 切片8§3.2: 列表屏带mode(前端见面入口/横幅用)
     for o in out:
         o["typing"] = pend.get(o["char_id"], 0) > 0
+        o["mode"] = modes.get(o["char_id"], "chat")
     return out
 
 
 @app.get("/api/chars")
 def chars_ep():
     return {"chars": _digest()}
+
+
+@app.get("/api/mode")
+def mode_get(char_id: str = ""):
+    """切片8§3.2: mode态查询; ?char_id=单角色, 缺省=五角色全量"""
+    char_id = (char_id or "").strip()
+    if char_id and char_id not in CHARS:
+        return _err(400, f"char_id须为: {','.join(CHARS)}")
+    if char_id:
+        st = _get_meet_state(char_id)
+        return {"char_id": char_id, "mode": st.get("mode") or "chat",
+                "scene": st.get("scene") or "", "since": st.get("since") or 0}
+    return {"chars": _all_modes()}
+
+
+@app.post("/api/mode")
+async def mode_post(request: Request):
+    """切片8§3.2: chat<->meet切换+插system分隔行; 不调LLM零成本; /new不动mode(§3.5)"""
+    try:
+        body = await request.json()
+    except Exception:
+        return _err(400, "请求体不是合法JSON")
+    if not isinstance(body, dict):
+        return _err(400, "请求体须为JSON对象")
+    char = str(body.get("char_id") or body.get("char") or "").strip()
+    if char not in CHARS:
+        return _err(400, f"char_id须为: {','.join(CHARS)}")
+    mode = str(body.get("mode") or "").strip()
+    if not _MODE_RE.match(mode):
+        return _err(400, "mode须为chat或meet")
+    scene = str(body.get("scene") or "").strip()
+    note = str(body.get("note") or "").strip()
+    if scene and (len(scene) > _SCENE_MAX or _SCENE_BAD_RE.search(scene)):
+        return _err(400, f"scene须为{_SCENE_MAX}字内、无换行的场景名")
+    if len(note) > 40:
+        return _err(400, "note过长(>40)")
+    prev = _get_meet_state(char)
+    ts = time.time()
+    if mode == "meet":
+        # 再入meet(如只换场景)保留首入since(§3.1), 初入以当下计
+        since = prev.get("since") if prev.get("mode") == "meet" else ts
+        st = {"mode": "meet", "scene": scene, "since": since or ts, "note": note}
+        _meta_set(_meet_key(char), json.dumps(st, ensure_ascii=False))
+        line = f"—— 意识同步开始 · 场景:{scene or '未定'} ——"
+    else:
+        with db() as conn:   # 退出即删记录: 无记录=chat缺省(§3.1), 不留脏KV
+            conn.execute("DELETE FROM meta WHERE key=?", (_meet_key(char),))
+        st = {"mode": "chat", "scene": "", "since": 0.0, "note": ""}
+        line = "—— 意识同步结束，回到隔屏聊天 ——"
+    seq = await asyncio.to_thread(_insert_msg, char, "system", "system", line,
+                                  meta={"mode_evt": 1, "mode": st["mode"]})   # 切片9: 随行打标, 聊天屏滤/meet屏横幅
+    return {"ok": True, "char_id": char, "seq": seq, "mode": st["mode"], "scene": st["scene"]}
 
 
 @app.get("/api/health")
@@ -983,8 +1279,9 @@ async def post_msg(request: Request):
             with db() as conn:
                 cur = conn.execute(
                     "INSERT INTO messages(char_id, role, kind, content, ts) "
-                    "VALUES (?, 'system', 'system', '—— 上下文已重置，开启新会话 ——', ?)",
-                    (char, ts))
+                    "VALUES (?, 'system', 'system', ?, ?)",
+                    (char, "—— 上下文已重置，开启新会话 ——"
+                     + ("(仍在意识同步中)" if _mode_of(char) == "meet" else ""), ts))
                 return cur.lastrowid
         seq = await asyncio.to_thread(_store_sys)
         return JSONResponse({"ok": True, "is_new": True, "seq": seq, "ts": ts}, status_code=200)
@@ -1002,8 +1299,9 @@ async def post_msg(request: Request):
         ts = time.time()
         with db() as conn:
             cur = conn.execute(
-                "INSERT INTO messages(char_id, role, kind, content, ts) "
-                "VALUES (?, 'user', 'text', ?, ?)", (char, text or "[图片]", ts))
+                "INSERT INTO messages(char_id, role, kind, content, meta, ts) "
+                "VALUES (?, 'user', 'text', ?, ?, ?)", (char, text or "[图片]",
+                json.dumps({"mode": _mode_of(char)}, ensure_ascii=False), ts))   # 切片9: meta.mode随行
             seq = cur.lastrowid
             cur = conn.execute(
                 "INSERT INTO jobs(char_id, status, user_seq, img_seqs, created) "
@@ -1451,6 +1749,9 @@ def main():
     lock = ensure_single_instance(LOCK_PORT, "chatapp")   # 单例锁(独立GA_LOCK_PORT, 勿用878x)
     init_db()
     recover_jobs()
+    _meets = [c for c, m in _all_modes().items() if m == "meet"]
+    if _meets:   # 切片8: mode态用时现读零恢复成本, 此行=重启自愈开机自报告
+        print(f"[chatapp] meet_state 恢复: {_meets}", flush=True)
     print(f"[chatapp] serving {CHAT_HOST}:{CHAT_PORT} (db={DB_PATH})", flush=True)
     uvicorn.run(app, host=CHAT_HOST, port=CHAT_PORT, log_level="info")
 

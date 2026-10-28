@@ -252,12 +252,14 @@ html.keyboard-open #inputBar{padding-bottom:8px}
 #mssCustom::placeholder{color:#b3a385}
 #mssGoBtn{background:var(--m-ac);color:#fff;border:none;border-radius:10px;font-family:inherit;
   font-size:14px;letter-spacing:2px;padding:8px 16px;cursor:pointer}
-.meet-entry{font-family:"Songti SC","Noto Serif SC",serif;font-size:11px;color:#fff;letter-spacing:1px;border:none;border-radius:0;
-  padding:3px 10px;margin-top:4px;cursor:pointer;display:inline-block;transform:rotate(-2deg);font-weight:700;
-  background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(0,0,0,.18)),color-mix(in srgb,var(--t,#8a6d3b) 78%,#1c1c1c);
-  clip-path:polygon(3.2% 0%,100.0% 7.14%,96.8% 14.29%,100.0% 21.43%,96.8% 28.57%,100.0% 35.71%,96.8% 42.86%,100.0% 50.00%,96.8% 57.14%,100.0% 64.29%,96.8% 71.43%,100.0% 78.57%,96.8% 85.71%,100.0% 92.86%,96.8% 100.00%,0.0% 92.86%,3.2% 85.71%,0.0% 78.57%,3.2% 71.43%,0.0% 64.29%,3.2% 57.14%,0.0% 50.00%,3.2% 42.86%,0.0% 35.71%,3.2% 28.57%,0.0% 21.43%,3.2% 14.29%,0.0% 7.14%);box-shadow:0 2px 5px rgba(0,0,0,.25)}
-.meet-entry:hover{filter:brightness(1.15)}
-.meet-entry:active{opacity:.6}
+.meet-entry{border:none;background:none;padding:0;margin-top:3px;cursor:pointer;display:inline-block;
+  transform:rotate(-4deg);transition:transform .15s ease;font-size:0;line-height:0}
+.meet-entry img{display:block;width:34px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.28))}
+.meet-entry:hover{transform:rotate(0deg) scale(1.12)}
+.meet-entry:active{opacity:.6;transform:scale(.92)}
+.m-empty{display:flex;flex-direction:column;align-items:center;gap:16px;padding:38px 0 22px}
+.m-empty img{width:min(58vw,250px);height:auto;transform:rotate(-1.6deg);border-radius:8px;
+  box-shadow:0 3px 10px rgba(0,0,0,.15),0 1px 3px rgba(0,0,0,.10)}
 </style>
 </head>
 <body>
@@ -539,7 +541,7 @@ function renderList(){
       <div class="crow-mid"><div class="crow-name">${esc(c.name)}</div>
       <div class="crow-preview${c.typing?' typing':''}">${esc(c.typing?'对方正在输入…':(c.preview||'开始聊天'))}</div></div>
       <div class="crow-right"><div class="crow-time">${c.last_ts?fmtTime(c.last_ts):''}</div>
-      <div class="meet-entry" style="--t:${MEET_BTN[c.id]||CMAP[c.id].color||'#b5a'}" onclick="event.stopPropagation();openMeet('${c.id}')">&#9670; 见面</div>
+      <div class="meet-entry" title="${CMAP[c.id].name} · 见面" aria-label="见面" onclick="event.stopPropagation();openMeet('${c.id}')"><img src="${BASE}/media/badges/${c.id}.png" alt="见面"></div>
       ${unread>0?`<div class="badge">${unread>99?'99+':unread}</div>`:''}</div>`;
     row.onclick=()=>openChat(c.id);
     el.appendChild(row);
@@ -854,7 +856,9 @@ async function openMeet(cid){
     const last=msgs[msgs.length-1];
     meetSince[cid]=last?last.seq:0;
     if(last)setReadSeq(cid,last.seq);
-    if(!msgs.length){const b=document.createElement('div');b.className='m-band';b.textContent='意识空间已连接 · 开始你们的对话';$('meetPaper').appendChild(b)}
+    if(!msgs.some(m=>m.role!=='system')){const b=document.createElement('div');b.className='m-empty';
+      b.innerHTML=`<img src="${BASE}/media/badges/empty_screen.png" alt="">`;
+      const paper=$('meetPaper');paper.insertBefore(b,paper.firstChild)}
     meetScroll();
   }catch(e){toast('加载失败: '+e.message)}
 }

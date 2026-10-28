@@ -639,7 +639,7 @@ async function openChat(cid){
   $('chatAvatar').innerHTML=avatarHtml(cid,34);   /* 切片5: 图片头像 */
   $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;   /* 热修1027: 此行切片5被误删→切换角色不清屏,五角色聊天互串;勿再动 */
   applyBg();
-  if(CMAP[cid].mode==='meet'){api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat'})}).catch(e=>toast('模式纠偏失败:'+e.message||e))}   /* 切片9: 异常退出meet的纠偏; 审计P1-3: 真吃reject+提示 */
+  if(CMAP[cid].mode==='meet'){api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat',quiet:1})}).catch(e=>toast('模式纠偏失败:'+e.message||e))}   /* 切片9: 异常退出meet的纠偏; 审计P1-3: 真吃reject+提示; 1028-LB: quiet只纠态,结束横幅由下次chat首条消息惰性补 */
 
   /* 切片7: 骨架秒开 —— 先读本地离线缓存, 立即渲染无需等待网络 */
   try{
@@ -853,7 +853,7 @@ async function openMeet(cid){
   const ms=$('meetScreen');ms.style.display='flex';ms.dataset.char=cid;
   $('meetTitle').textContent=CMAP[cid].name;$('meetSceneName').textContent=meetScene||'选场景';
   $('meetBar').style.display='flex';$('meetPaper').innerHTML='';
-  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene})})}catch(e){}
+  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene,quiet:1})})}catch(e){}   /* 1028-LB: 纯浏览进出不落横幅,首条见面消息时惰性补"开始" */
   try{
     const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=20`);   /* 1028-MP: 对齐聊天屏=默认拉最近20条原始行(见面文字多),不再只渲染最近一轮同步 */
     const raw=r.msgs||[];
@@ -896,7 +896,7 @@ $('meetArea').addEventListener('scroll',async()=>{
 async function closeMeet(){
   const cid=meetChar;meetChar=null;
   $('meetScreen').style.display='none';$('listScreen').style.display='flex';
-  if(cid){try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat'})})}catch(e){}}
+  if(cid){try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat',quiet:1})})}catch(e){}}   /* 1028-LB: 退出不落横幅,回聊天屏发首条消息时惰性补"结束" */
   refreshDigest();
 }
 /* ---------- 切片10: 场景两级级联弹层(最近×3 + 通用约会点 + 角色地盘→房间chips + 自定义) ---------- */

@@ -1113,6 +1113,7 @@ async def mode_post(request: Request):
         return _err(400, f"scene须为{_SCENE_MAX}字内、无换行的场景名")
     if len(note) > 40 or (note and _SCENE_BAD_RE.search(note)):
         return _err(400, "note须为40字内、无换行/控制符")
+    quiet = bool(body.get("quiet"))   # 1028-LB: quiet=只切态不落横幅(纯浏览进出不刷屏), 横幅改由/api/msg首条消息惰性补
     prev = _get_meet_state(char)
     ts = time.time()
     if mode == "meet":
@@ -1128,8 +1129,10 @@ async def mode_post(request: Request):
         await asyncio.to_thread(_del_meet)
         st = {"mode": "chat", "scene": "", "since": 0.0, "note": ""}
         line = "—— 意识同步结束，回到隔屏聊天 ——"
-    seq = await asyncio.to_thread(_insert_msg, char, "system", "system", line,
-                                  meta={"mode_evt": 1, "mode": st["mode"]})   # 切片9: 随行打标, 聊天屏滤/meet屏横幅
+    seq = 0
+    if not quiet:   # 1028-LB: quiet模式横幅延后到首条消息时补(见post_msg惰性横幅)
+        seq = await asyncio.to_thread(_insert_msg, char, "system", "system", line,
+                                      meta={"mode_evt": 1, "mode": st["mode"]})   # 切片9: 随行打标, 聊天屏滤/meet屏横幅
     return {"ok": True, "char_id": char, "seq": seq, "mode": st["mode"], "scene": st["scene"]}
 
 
@@ -1330,6 +1333,34 @@ async def post_msg(request: Request):
                 image_seqs + [char]).fetchall()
         if len(rows) != len(set(image_seqs)):
             return _err(400, "image_seqs含无效或非本角色的图片")
+    # 1028-LB: 惰性横幅——meet态首条消息补"开始", meet段后的首条chat消息补"结束"; 纯浏览进出零落库
+    cur_mode = _mode_of(char)
+    def _lazy_banner():
+        with db() as conn:
+            r = conn.execute(
+                "SELECT meta FROM messages WHERE char_id=? AND "
+                "CASE WHEN meta IS NULL OR json_valid(meta) THEN json_extract(meta,'$.mode_evt') END IS NOT NULL "
+                "ORDER BY seq DESC LIMIT 1", (char,)).fetchone()
+            last_evt = None
+            if r and r["meta"]:
+                try:
+                    last_evt = (json.loads(r["meta"]) or {}).get("mode")
+                except Exception:
+                    last_evt = None
+            if cur_mode == "meet" and last_evt != "meet":
+                scene = ((_get_meet_state(char) or {}).get("scene") or "").strip()
+                conn.execute(
+                    "INSERT INTO messages(char_id, role, kind, content, meta, ts) "
+                    "VALUES (?, 'system', 'system', ?, ?, ?)",
+                    (char, f"—— 意识同步开始 · 场景:{scene or '未定'} ——",
+                     json.dumps({"mode_evt": 1, "mode": "meet"}, ensure_ascii=False), time.time()))
+            elif cur_mode == "chat" and last_evt == "meet":
+                conn.execute(
+                    "INSERT INTO messages(char_id, role, kind, content, meta, ts) "
+                    "VALUES (?, 'system', 'system', ?, ?, ?)",
+                    (char, "—— 意识同步结束，回到隔屏聊天 ——",
+                     json.dumps({"mode_evt": 1, "mode": "chat"}, ensure_ascii=False), time.time()))
+    await asyncio.to_thread(_lazy_banner)
     def _store():   # B2: 消息+job同事务; B9: 服务端权威ts; M3: img_seqs逗号串挂job
         ts = time.time()
         with db() as conn:

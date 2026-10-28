@@ -102,3 +102,10 @@
 
 - 用户投诉根因三连: ①上次清库只删seq>=47, seq1-46全量测试残留 ②清手机缓存后LS_READ空, 全局递增seq被当未读→红标46/26 ③服务端空历史时前端不清DOM+骨架缓存→幽灵消息常驻
 - 处置: DB全清42msg/19jobs/meta+seq归零(备份/tmp重启即失); 测试媒体6删(bg/avatars保留); 宫殿5角色删30条测试(裸对话对=测试, USER带【家园·前缀=朋友圈生产流保留; qinche10-22真实互动2对+柠檬水孤条存疑保留); 前端补丁A首装以digest.last_seq播种已读基线+B空历史清屏清缓存; 服务kill精确PID重启(切片7起有内存态); API验证5角色last_seq=0
+
+
+## 2026-10-28晚 切片9-D7 审计修复 ✅
+- OC 审计(GLM-5.3+gstack)核出 4×P1+9×P2,逐条人工复核后修 9 条(2条不成立/3条微): 关键=P1-2 打标锚定 user 发送行(新 `_mode_of_user_row`,实弹铁证: meet中发送→秒切chat→assistant行仍标meet); P1-1 历史分页丢 mode 过滤; P2-3 digest json_valid 护栏; P2-2 mode_post 同步写包 to_thread; P2-1 note 控制字符 400; P2-6 digest 带 scene+system 行补标; P2-9 状态行作废声明; P2-4/5/7 前端微修(P1-3 toast 化)
+- 实弹: note 400 / digest{mode,scene} / meet_state KV 清净; tests 11→25 绿; DB 清残留(56-58+死KV,星回曾卡 meet 态); 服务精确 PID 重启
+- 审计报告留档 /tmp/oc_audit_out.txt(重启即失,结论已并入本文件+notes_slice9)
+- 遗留不变: 切片10 皮肤验收 / 切片11 素材(主人找素材中,场景名"静室/天台"待主人替换)

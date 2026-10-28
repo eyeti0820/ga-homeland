@@ -90,6 +90,56 @@ pro = chatapp._insert_msg(C, "assistant", "text", "[主动]在吗", meta={"proac
 dig = dig_of(C) or {}
 check("chat态proactive行正常显示", dig["last_seq"] == pro, f"seq={dig.get('last_seq')} vs {pro}")
 
+
+# ==== D7审计修复回归 (1028): P1-2/P2-1/P2-3/P2-6/P2-9 ====
+print("== D7-1. P1-2: assistant行mode锚定user发送行 ==")
+u1 = chatapp._insert_msg(C, "user", "text", "见面时说的话", meta={"mode": "meet"})
+u2 = chatapp._insert_msg(C, "user", "text", "回chat后说的话", meta={"mode": "chat"})
+check("user行meta=meet→取meet", chatapp._mode_of_user_row(u1) == "meet")
+check("user行meta=chat→取chat", chatapp._mode_of_user_row(u2) == "chat")
+u3 = chatapp._insert_msg(C, "user", "text", "无meta老行")
+check("无meta→None(现读兜底)", chatapp._mode_of_user_row(u3) is None)
+check("不存在的seq→None", chatapp._mode_of_user_row(999999) is None)
+with chatapp.db() as conn:
+    conn.execute("UPDATE messages SET meta='{bad json' WHERE seq=?", (u3,))
+check("坏meta→None不炸", chatapp._mode_of_user_row(u3) is None)
+
+print("== D7-2. P2-3: digest遇坏meta JSON不炸 ==")
+chatapp._insert_msg(C, "assistant", "text", "坏meta正文行", meta="{bad")
+dig = dig_of(C)
+check("坏meta行被digest跳过不raise", dig is not None, "crash?")
+chatapp._insert_msg(C, "assistant", "text", "好meta行", meta='{"mode": "chat"}')
+dig2 = dig_of(C)
+check("坏meta后digest仍工作", dig2 and dig2["preview"] == "好meta行", str(dig2 and dig2.get("preview")))
+
+print("== D7-3. P2-1: note控制字符被拒 ==")
+r, code = post_mode({"char_id": C, "mode": "meet", "scene": "星轨天文台", "note": "备注\u0000带控制符"})
+check("note含控制符→400", code == 400, f"code={code}")
+
+print("== D7-4. P2-6: digest带scene(供openMeet恢复) ==")
+check("digest含scene字段", dig2 and "scene" in dig2, str(list(dig2.keys()) if dig2 else None))
+post_mode({"char_id": C, "mode": "meet", "scene": "星轨天文台"})
+dig_m = dig_of(C)
+check("meet态scene=星轨天文台", dig_m and dig_m.get("scene") == "星轨天文台", str(dig_m and dig_m.get("scene")))
+post_mode({"char_id": C, "mode": "chat"})
+dig3 = dig_of(C)
+check("chat态scene=空串", dig3 and dig3.get("scene") == "", str(dig3 and dig3.get("scene")))
+
+print("== D7-5. P2-6b: system行落库带mode标 ==")
+chatapp._insert_msg(C, "system", "system", "(一条语音转码失败, 内容丢失)",
+                    meta={"mode": chatapp._mode_of(C)})
+rows = _last_rows(C, 1); m = _meta_of(rows[0])
+check("system行带mode标", m.get("mode") in ("chat", "meet"), str(m))
+
+print("== D7-6. P2-9: 状态行自带作废声明+坏state回退chat ==")
+chatapp._meta_set(chatapp._meet_key(C), json.dumps({"mode": "meet", "scene": "静室"}))
+line = chatapp._state_line(C)
+check("meet态状态行含作废声明", "作废" in line and "静室" in line, line)
+chatapp._meta_set(chatapp._meet_key(C), json.dumps({"scene": "只有场景没mode"}))
+check("无mode坏state→回退chat行", "隔屏聊天" in chatapp._state_line(C), "no fallback")
+with chatapp.db() as conn:
+    conn.execute("DELETE FROM meta WHERE key=?", (chatapp._meet_key(C),))
+
 print("=" * 40)
 print(f"PASS={PASS} FAIL={FAIL}")
 sys.exit(1 if FAIL else 0)

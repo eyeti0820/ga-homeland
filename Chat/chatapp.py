@@ -285,6 +285,21 @@ def _finish_job(job_id, status, error=None):
                      (status, error, time.time(), job_id))
 
 
+def _mode_of_user_row(seq):
+    """审计P1-2: assistant/system行mode锚定user发送行(发送时语义), 完成时切模式不串流; 无/坏meta返None"""
+    if not seq:
+        return None
+    with db() as conn:
+        m = conn.execute("SELECT meta FROM messages WHERE seq=?", (seq,)).fetchone()
+    if not m or not (m["meta"] or "").strip():
+        return None
+    try:
+        v = json.loads(m["meta"]).get("mode")
+        return v if v in ("chat", "meet") else None
+    except Exception:
+        return None
+
+
 def _fetch_user_msg(seq):
     with db() as conn:
         m = conn.execute("SELECT content FROM messages WHERE seq=?", (seq,)).fetchone()
@@ -546,7 +561,7 @@ def _emit_media_row(char, src, desc=""):
             _insert_msg(char, "assistant", "voice", "(语音)", media_path=url,
                         meta={"dur": dur, "src": os.path.basename(p)})
             return "[发过语音]"
-        _insert_msg(char, "system", "system", "(一条语音转码失败, 内容丢失)")   # P1-6
+        _insert_msg(char, "system", "system", "(一条语音转码失败, 内容丢失)", None, {"mode": _mode_of(char)})   # P1-6; 审计P2-6: system行随屏
         return ""
     if low.endswith(_IMG_EXT):
         try:
@@ -694,7 +709,7 @@ async def _process_job(job):
     final = build_done_text(_s6) if _s6.strip() else ""
     final = (final or "").strip()
     await asyncio.to_thread(_insert_msg, char, "assistant", "text", final or "……",
-                            meta={"mode": _mode_of(char)})   # 切片9: 随行打mode, 前端按屏过滤
+                            meta={"mode": _mode_of_user_row(user_seq) or _mode_of(char)})   # 切片9: 随行打mode, 前端按屏过滤; 审计P1-2: 锚定user发送行
     mnote = ""
     try:
         mnote = await asyncio.to_thread(_emit_reply_media, char, raw, start - 2)
@@ -750,6 +765,21 @@ def _get_meet_state(char):
     except Exception:
         pass
     return {"mode": "chat"}
+
+
+def _all_scenes():
+    """审计P2-6: digest带scene, 前端openMeet恢复最近场景; 仅meet态有值"""
+    out = {}
+    with db() as conn:
+        for r in conn.execute("SELECT key, value FROM meta WHERE key LIKE ?",
+                              (_MEET_KEY_PREFIX + "%",)):
+            c = r["key"][len(_MEET_KEY_PREFIX):]
+            if c in CHARS:
+                try:
+                    out[c] = str(json.loads(r["value"]).get("scene") or "")
+                except Exception:
+                    out[c] = ""
+    return out
 
 
 def _mode_of(char):
@@ -812,6 +842,7 @@ def _state_line(char, now=None):
         note = str(st.get("note") or "").strip()
         if note:
             parts.append(f"备注:{note}")
+        parts.append("历史旧状态行一律作废,以本行为准")   # 审计P2-9: trim淘汰旧态行后兜底
         return "[状态: " + " · ".join(parts) + "]"
     return "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系]"
 
@@ -895,7 +926,7 @@ async def _proactive_once(char):
     if not final:
         raise RuntimeError("proactive 产出为空")
     await asyncio.to_thread(_insert_msg, char, "assistant", "text", final, None,
-                            {"proactive": True, "mode": "meet" if meet else "chat"})   # 切片8: mode随行(切片9横幅用)
+                            {"proactive": True, "mode": _mode_of(char)})   # 切片8: mode随行(切片9横幅用); 审计P1-2: 完成时现读, 弃生成前旧值
     try:   # 对齐fsapp B1: 主动消息同样入宫殿账本, 触发侧记为系统触发
         await asyncio.to_thread(svc.ctx.ingest, SERVICE_SOURCE,
                                 "[主动消息·系统触发]", final)
@@ -1010,10 +1041,10 @@ def _digest():
         for c in CHARS:
             r = conn.execute(   # 切片9: 聊天列表digest只看chat态行(meet行/mode_evt行/历史同步行全滤)
                 "SELECT * FROM messages WHERE char_id=? AND "
-                "COALESCE(json_extract(meta,'$.mode'),'chat')='chat' AND "
-                "json_extract(meta,'$.mode_evt') IS NULL AND "
-                "content NOT LIKE '—— 意识同步%' AND content NOT LIKE '—— 同步结束%' "
-                "ORDER BY seq DESC LIMIT 1", (c,)).fetchone()
+                "CASE WHEN meta IS NULL OR json_valid(meta) THEN COALESCE(json_extract(meta,'$.mode'),'chat') ELSE 'chat' END='chat' AND "
+                "CASE WHEN meta IS NULL OR json_valid(meta) THEN json_extract(meta,'$.mode_evt') END IS NULL AND "
+                "content NOT LIKE '—— 意识同步%' "
+                "ORDER BY seq DESC LIMIT 1", (c,)).fetchone()   # 审计P2-3: json_valid护栏(坏meta不500); 删不可达条件'同步结束%' 
             if r:
                 preview = (r["content"] or "").strip()
                 if r["kind"] == "image_in" or r["kind"] == "image_out":
@@ -1035,9 +1066,11 @@ def _digest():
             "SELECT char_id, COUNT(*) AS n FROM jobs WHERE status IN ('pending','running') "
             "GROUP BY char_id").fetchall()}
     modes = _all_modes()   # 切片8§3.2: 列表屏带mode(前端见面入口/横幅用)
+    scenes = _all_scenes()   # 审计P2-6: openMeet恢复最近场景
     for o in out:
         o["typing"] = pend.get(o["char_id"], 0) > 0
         o["mode"] = modes.get(o["char_id"], "chat")
+        o["scene"] = scenes.get(o["char_id"], "")
     return out
 
 
@@ -1078,19 +1111,21 @@ async def mode_post(request: Request):
     note = str(body.get("note") or "").strip()
     if scene and (len(scene) > _SCENE_MAX or _SCENE_BAD_RE.search(scene)):
         return _err(400, f"scene须为{_SCENE_MAX}字内、无换行的场景名")
-    if len(note) > 40:
-        return _err(400, "note过长(>40)")
+    if len(note) > 40 or (note and _SCENE_BAD_RE.search(note)):
+        return _err(400, "note须为40字内、无换行/控制符")
     prev = _get_meet_state(char)
     ts = time.time()
     if mode == "meet":
         # 再入meet(如只换场景)保留首入since(§3.1), 初入以当下计
         since = prev.get("since") if prev.get("mode") == "meet" else ts
         st = {"mode": "meet", "scene": scene, "since": since or ts, "note": note}
-        _meta_set(_meet_key(char), json.dumps(st, ensure_ascii=False))
+        await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))   # 审计P2-2: 阻塞写挪出事件循环
         line = f"—— 意识同步开始 · 场景:{scene or '未定'} ——"
     else:
-        with db() as conn:   # 退出即删记录: 无记录=chat缺省(§3.1), 不留脏KV
-            conn.execute("DELETE FROM meta WHERE key=?", (_meet_key(char),))
+        def _del_meet():   # 审计P2-2: 阻塞写挪出事件循环
+            with db() as conn:   # 退出即删记录: 无记录=chat缺省(§3.1), 不留脏KV
+                conn.execute("DELETE FROM meta WHERE key=?", (_meet_key(char),))
+        await asyncio.to_thread(_del_meet)
         st = {"mode": "chat", "scene": "", "since": 0.0, "note": ""}
         line = "—— 意识同步结束，回到隔屏聊天 ——"
     seq = await asyncio.to_thread(_insert_msg, char, "system", "system", line,
@@ -1518,7 +1553,7 @@ def _mark_user_error(char, user_seq, e):
     审计P2-3: 记err_sys_seq, 成功后由_clear_error_hint撤掉配套system提示行"""
     if not user_seq:
         return
-    sys_seq = _insert_msg(char, "system", "system", f"{_friendly_err(e)}, 点红色感叹号可重试")
+    sys_seq = _insert_msg(char, "system", "system", f"{_friendly_err(e)}, 点红色感叹号可重试", None, {"mode": _mode_of_user_row(user_seq) or _mode_of(char)})   # 审计P2-6: 与user行同屏
     _update_msg_meta(user_seq, lambda m: m.update(error=_friendly_err(e), err_sys_seq=sys_seq))
 
 

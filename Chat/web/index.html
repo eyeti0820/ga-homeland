@@ -553,7 +553,9 @@ function applyMsgs(cid,msgs,stagger){
   const list=msgs.filter(chatFilter);   /* 切片9: 聊天屏滤meet行/mode_evt行 */
   list.forEach(m=>{if(!rendered.has(m.seq))appendRow(cid,m,stagger)});
   const last=list[list.length-1];
-  if(last){sinceSeq[cid]=Math.max(sinceSeq[cid]||0,last.seq);setReadSeq(cid,last.seq)}
+  if(last)setReadSeq(cid,last.seq);   /* 已读只记渲染行 */
+  const lastRaw=msgs[msgs.length-1];   /* 审计P2-4: sinceSeq按原始末行推进, 纯meet批次不再卡轮询 */
+  if(lastRaw)sinceSeq[cid]=Math.max(sinceSeq[cid]||0,lastRaw.seq);
 }
 async function openChat(cid){
   activeChar=cid;
@@ -563,7 +565,7 @@ async function openChat(cid){
   $('chatAvatar').innerHTML=avatarHtml(cid,34);   /* 切片5: 图片头像 */
   $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;sinceSeq[cid]=0;   /* 热修1027: 此行切片5被误删→切换角色不清屏,五角色聊天互串;勿再动 */
   applyBg();
-  if(CMAP[cid].mode==='meet'){try{api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat'})})}catch(e){}}   /* 切片9: 异常退出meet的纠偏 */
+  if(CMAP[cid].mode==='meet'){api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat'})}).catch(e=>toast('模式纠偏失败:'+e.message||e))}   /* 切片9: 异常退出meet的纠偏; 审计P1-3: 真吃reject+提示 */
 
   /* 切片7: 骨架秒开 —— 先读本地离线缓存, 立即渲染无需等待网络 */
   try{
@@ -644,8 +646,8 @@ $('msgArea').addEventListener('scroll',async()=>{
       const r=await api(`/api/history?char_id=${encodeURIComponent(activeChar)}&before_seq=${before}&limit=50`);
       if(r.msgs&&r.msgs.length){
         const area=$('msgArea'),h0=area.scrollHeight;
-        area.innerHTML='';rendered=new Set();lastTsShown[activeChar]=0;firstSeqInDom[activeChar]=0;
-        r.msgs.forEach(m=>appendRow(activeChar,m,false));
+        area.innerHTML='';rendered=new Set();lastTsShown[activeChar]=0;firstSeqInDom[activeChar]=r.msgs[0].seq;
+        r.msgs.filter(chatFilter).forEach(m=>appendRow(activeChar,m,false));   /* 审计P1-1: 分页也走chat滤,meet行不漏进聊天屏;firstSeq取原始首行(整页滤空仍可续翻) */
         area.scrollTop=area.scrollHeight-h0;
       }
     }catch(e){}
@@ -712,9 +714,9 @@ let meetChar=null,meetScene='',meetSince={},meetRendered=new Set();
 
 function mMeta(m){if(!m.meta)return{};if(typeof m.meta==='object')return m.meta;try{return JSON.parse(m.meta)}catch(e){return{}}}
 function meetFilter(m){const mt=mMeta(m);   /* meet态相关行才进见面屏 */
-  return !!(mt.mode_evt||mt.mode==='meet'||/^—— (意识同步|同步)/.test(m.content||''));}
+  return !!(mt.mode_evt||mt.mode==='meet'||/^—— 意识同步/.test(m.content||''));}   /* 审计P2-5: 与后端digest口径对齐(精确前缀) */
 function chatFilter(m){const mt=mMeta(m);   /* 聊天屏滤掉meet行(切片9) */
-  return !(mt.mode_evt||mt.mode==='meet'||/^—— (意识同步|同步)/.test(m.content||''));}
+  return !(mt.mode_evt||mt.mode==='meet'||/^—— 意识同步/.test(m.content||''));}   /* 审计P2-5 */
 function meetParse(text){   /* 行级解析: 括号段=旁白, 其余=台词 */
   const out=[];
   (text||'').split(/\n/).forEach(line=>{
@@ -747,7 +749,7 @@ function meetNovel(cid,msg){
 }
 function meetScroll(){const a=$('meetArea');if(a)a.scrollTop=a.scrollHeight}
 async function openMeet(cid){
-  meetChar=cid;meetScene=MEET_SCENES[0];meetRendered=new Set();
+  meetChar=cid;meetRendered=new Set();const _sc=CMAP[cid].scene;meetScene=(_sc&&MEET_SCENES.includes(_sc))?_sc:MEET_SCENES[0];   /* 审计P2-6: 恢复最近场景 */
   $('listScreen').style.display='none';$('chatScreen').style.display='none';
   const ms=$('meetScreen');ms.style.display='flex';ms.dataset.char=cid;
   $('meetTitle').textContent=CMAP[cid].name;$('meetSceneName').textContent=meetScene;
@@ -774,7 +776,7 @@ async function closeMeet(){
 function toggleSceneMenu(ev){if(ev)ev.stopPropagation();
   const m=$('meetSceneMenu');
   if(m.style.display==='block'){m.style.display='none';return}
-  m.innerHTML=MEET_SCENES.map(s=>`<div onclick="pickScene('${s}')">${s}</div>`).join('');
+  m.innerHTML='';MEET_SCENES.forEach(s=>{const d=document.createElement('div');d.textContent=s;d.onclick=()=>pickScene(s);m.appendChild(d)});   /* 审计P2-7: DOM构建,场景名不入事件字符串 */
   m.style.display='block';
 }
 async function pickScene(s){

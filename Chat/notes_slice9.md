@@ -41,3 +41,14 @@
 外面雨这么大？
 [54 system] —— 意识同步开始 · 场景:夜市 ——
 [55 system] —— 意识同步结束，回到隔屏聊天 ——
+
+
+---
+
+## D7 审计修复(1028晚, OC审计报告/tmp/oc_audit_out.txt, 4×P1+9×P2核出→修9条)
+- **P1-1** 历史分页丢失 mode 过滤(上翻拉回 meet 行)→ filter(chatFilter)+firstSeq 取过滤后首行
+- **P1-2** assistant 行打标改锚定 user 发送行(`_mode_of_user_row`,新helper): 完成前切模式不再串流;实弹铁证 seq59-62(user行meet→秒切chat→assistant仍标meet),验后已删
+- **P1-3** openChat 纠偏 mode 的 catch 静默吞错→ toast+console.warn
+- **P2-1** note 校验控制字符(_SCENE_BAD_RE)→400; **P2-2** mode_post 两处同步 SQLite 写包 asyncio.to_thread; **P2-3** digest SQL 加 json_valid() 护栏+删 AND 死条件; **P2-4** applyMsgs sinceSeq 按 raw 末行(早退分支不丢游标); **P2-5** 同步行 LIKE 兜底改精确前缀; **P2-6** digest 带字段+两处 system 行(语音转码失败/错误提示)补 mode 标; **P2-7** 场景菜单 DOM 用 innerHTML 构建; **P2-9** 状态行自带"历史旧状态行一律作废"声明(trim 淘汰后防 LLM 拿旧态)
+- P1-4 核实不成立(无 M1 期无标正文行),免修; DB 残留: seq56-58+`meet_state:shenxinghui` 死 KV 已清(星回曾卡 meet 态)
+- 回归: tests/test_slice9_be.py 增至 25 绿; 服务重启 PID58487; 备份 `.bak_s9fix`(chatapp/index)

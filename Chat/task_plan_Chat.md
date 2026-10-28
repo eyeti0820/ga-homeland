@@ -116,4 +116,5 @@
 - **验收(全过)**: 字体A/B对照卡vision实锤;装订孔+胶带 PIL 按CSS几何×dpr像素采样实锤(橙带y560-598);五角色 computed 主题变量轮验全对(xiazhou橙/shenxinghui紫/lishen蓝/qiyu粉/qinche暗);chat屏回归82条消息正常;浮层数=0——vision曾报"面板遮挡/胶带不存在"均为低清幻觉,DOM+像素双证翻案(经验已录 vision_sop)
 - **测试**: slice8 48/48 + slice9 25/25;slice8 两期望串对齐 D7-6 作废声明后缀(预存漂移,chatapp.py 本片未动)
 - ⚠ commit msg 欠准确: 只提手帐化,实含场景级联重构(同一diff 191行,以本条目为准)
+- hotfix `1a41fb6`(1028晚): 切片10加字体link时误写字面\n于head→body左上角渲染"/n/n"符号,已改真换行+实弹复查清零
 - 遗留: 五皮肤手机端暗光肉眼验收+主人UI小调优(下session主任务)/切片11=生图五徽标替换"◆见面"+空屏插画/切片12=persona注入

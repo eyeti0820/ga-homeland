@@ -109,3 +109,11 @@
 - 实弹: note 400 / digest{mode,scene} / meet_state KV 清净; tests 11→25 绿; DB 清残留(56-58+死KV,星回曾卡 meet 态); 服务精确 PID 重启
 - 审计报告留档 /tmp/oc_audit_out.txt(重启即失,结论已并入本文件+notes_slice9)
 - 遗留: 切片10=素材接入+**场景系统两级级联重构**(1028已拍板,规格@handoff_Chat.md文末)+五主题验收 / 切片11=剩余生图素材
+
+## 2026-10-28晚 切片10 场景两级级联重构+手帐化UI ✅ (commit 09ee0ed)
+- **场景重构(纯前端)**: 选景改底部抽屉弹层 `#meetSceneSheet`(mss*系): 最近去过×3(localStorage `meet_recent_scenes`,去重保序挤旧)+约会点COMMON(兔咪火锅/甜品店/Twinkle潮玩店/奶茶店)+角色地盘两级级联(CHAR_SCENES: 一级地盘→浮出BASE+特有房间chips,可不选=整屋)+底部常驻自定义输入;落库格式"一级·二级";后端 scene 仍自由文本零改动,旧场景名不迁移
+- **手帐化UI**: LXGW文楷字体(web/fonts/,见面屏局部font-family)+浅淡方格纹纸面+左列装订孔(34px芯白描边,qinche深芯rgba(0,0,0,.5))+和纸胶带贴条(58×17 主题色 旋转-4°)+贴纸感台词气泡+“— 第N幕 —”分隔带+五角色CSS主题变量化(openMeet幂等切换注入,chat屏fontFamily实测系统栈零泄漏)
+- **验收(全过)**: 字体A/B对照卡vision实锤;装订孔+胶带 PIL 按CSS几何×dpr像素采样实锤(橙带y560-598);五角色 computed 主题变量轮验全对(xiazhou橙/shenxinghui紫/lishen蓝/qiyu粉/qinche暗);chat屏回归82条消息正常;浮层数=0——vision曾报"面板遮挡/胶带不存在"均为低清幻觉,DOM+像素双证翻案(经验已录 vision_sop)
+- **测试**: slice8 48/48 + slice9 25/25;slice8 两期望串对齐 D7-6 作废声明后缀(预存漂移,chatapp.py 本片未动)
+- ⚠ commit msg 欠准确: 只提手帐化,实含场景级联重构(同一diff 191行,以本条目为准)
+- 遗留: 五皮肤手机端暗光肉眼验收+主人UI小调优(下session主任务)/切片11=生图五徽标替换"◆见面"+空屏插画/切片12=persona注入

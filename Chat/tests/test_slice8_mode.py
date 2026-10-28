@@ -73,11 +73,11 @@ check("chat态", l == "[状态: 隔屏聊天 · 你们不在同一空间, 通过
 chatapp._meta_set("meet_state:qiyu", json.dumps(
     {"mode": "meet", "scene": "书房", "since": NOW - 14 * 3600, "note": "她已睡着"}))
 l = chatapp._state_line("qiyu", NOW)
-want = "[状态: 意识同步中(你们在同一空间, 面对面) · 场景:书房 · 始于今天01:00·已持续14小时 · 备注:她已睡着]"
+want = "[状态: 意识同步中(你们在同一空间, 面对面) · 场景:书房 · 始于今天01:00·已持续14小时 · 备注:她已睡着 · 历史旧状态行一律作废,以本行为准]"
 check("meet态全字段", l == want, repr(l))
 chatapp._meta_set("meet_state:qiyu", json.dumps({"mode": "meet"}))
 l = chatapp._state_line("qiyu", NOW)
-check("meet态裸记录", l == "[状态: 意识同步中(你们在同一空间, 面对面)]", repr(l))
+check("meet态裸记录", l == "[状态: 意识同步中(你们在同一空间, 面对面) · 历史旧状态行一律作废,以本行为准]", repr(l))
 
 print("== 5. mode_post 校验(全400路径) ==")
 for name, body in [

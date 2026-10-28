@@ -15,7 +15,7 @@
 document.documentElement.classList.toggle('standalone',
   matchMedia('(display-mode: standalone)').matches || navigator.standalone === true);
 </script>
-<style>
+<link rel="stylesheet" href="/media/font/lxgwwenkai-regular.css">\n<link rel="stylesheet" href="/media/font/lxgwwenkai-bold.css">\n<style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;height:100dvh;overscroll-behavior:none;overflow:hidden}html{background:#f7f7f7}
 body{font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;background:#f7f7f7;color:#111;
@@ -143,58 +143,96 @@ html.keyboard-open #inputBar{padding-bottom:8px}
 .ctx-btn.del{color:#ff6b6b}
 #ctxMask{position:fixed;inset:0;z-index:149;display:none;background:transparent}
 
-/* ---------- 切片9: 见面屏(小说排版·羊皮纸细方格·五主题) ---------- */
+/* ---------- 切片10: 见面屏(手帐风·主题撞色底·奶油纸卡·台词贴纸·霞鹜文楷) ---------- */
 #meetScreen{position:fixed;inset:0;display:none;flex-direction:column;z-index:60;
-  font-family:"Songti SC","Noto Serif SC",serif;
-  background:
-    repeating-linear-gradient(0deg,transparent 0 21px,var(--m-grid) 21px 22px),
-    repeating-linear-gradient(90deg,transparent 0 21px,var(--m-grid) 21px 22px),
-    var(--m-paper);
-  --m-paper:#f6eedb;--m-grid:rgba(150,110,55,.13);--m-ink:#3c2f1e;--m-ink2:#8a7a5e;
-  --m-ac:#e8823a;--m-ac2:#3a6ea8;--m-saybg:rgba(255,255,255,.55);--m-bandc:#a08a5f;}
-#meetScreen[data-char="shenxinghui"]{--m-paper:#f3eefa;--m-grid:rgba(105,80,160,.12);--m-ink:#37304a;--m-ink2:#837699;--m-ac:#7b5ea7;--m-ac2:#c99b2e;--m-saybg:rgba(255,255,255,.6);--m-bandc:#8a7ba8}
-#meetScreen[data-char="qinche"]{--m-paper:#2b2422;--m-grid:rgba(214,172,110,.09);--m-ink:#e9ddc9;--m-ink2:#a3937c;--m-ac:#c7515a;--m-ac2:#d9a441;--m-saybg:rgba(255,255,255,.05);--m-bandc:#9a8468}
-#meetScreen[data-char="lishen"]{--m-paper:#eef3f9;--m-grid:rgba(90,120,160,.13);--m-ink:#2f3a4a;--m-ink2:#7a8aa0;--m-ac:#4a7fb5;--m-ac2:#7fa8cf;--m-saybg:rgba(255,255,255,.6);--m-bandc:#8296ad}
-#meetScreen[data-char="qiyu"]{--m-paper:#f9eef6;--m-grid:rgba(180,110,160,.12);--m-ink:#43303f;--m-ink2:#9c7f92;--m-ac:#d98ab8;--m-ac2:#7a5ea8;--m-saybg:rgba(255,255,255,.6);--m-bandc:#b78aa8}
-#meetScreen::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.35;mix-blend-mode:soft-light;
+  font-family:"LXGW WenKai","Songti SC","Noto Serif SC",serif;
+  background:linear-gradient(150deg,var(--m-bg1) 0%,var(--m-bg2) 46%,var(--m-bg3) 100%);
+  --m-bg1:#ffc06e;--m-bg2:#ff8b3d;--m-bg3:#4f7fd9;
+  --m-ink:#3c2f1e;--m-ink2:#6b5b40;--m-ac:#e8823a;--m-ac2:#3a6ea8;--m-bandc:#fff;--m-hole:rgba(90,70,40,.26)}
+#meetScreen[data-char="shenxinghui"]{--m-bg1:#c3adff;--m-bg2:#7b5ea7;--m-bg3:#3c2f66;
+  --m-ink:#37304a;--m-ink2:#6a5d85;--m-ac:#7b5ea7;--m-ac2:#c99b2e;--m-bandc:#fff}
+#meetScreen[data-char="qinche"]{--m-bg1:#4a3a32;--m-bg2:#6e2f35;--m-bg3:#241a17;
+  --m-ink:#f0e6d2;--m-ink2:#bfae93;--m-ac:#c7515a;--m-ac2:#d9a441;--m-bandc:#e8d9c0;--m-hole:rgba(0,0,0,.5)}
+#meetScreen[data-char="lishen"]{--m-bg1:#a8d0f2;--m-bg2:#4a7fb5;--m-bg3:#2e5a8f;
+  --m-ink:#2f3a4a;--m-ink2:#5d6d82;--m-ac:#3a6ea8;--m-ac2:#7fa8cf;--m-bandc:#fff}
+#meetScreen[data-char="qiyu"]{--m-bg1:#f9c1e0;--m-bg2:#d98ab8;--m-bg3:#7a5ea8;
+  --m-ink:#43303f;--m-ink2:#7d6577;--m-ac:#d98ab8;--m-ac2:#7a5ea8;--m-bandc:#fff}
+#meetScreen::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.3;mix-blend-mode:soft-light;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>")}
 #meetHeader{position:relative;z-index:2;display:flex;align-items:center;gap:10px;padding:0 12px;
-  min-height:52px;background:rgba(40,32,24,.93);color:#f3ecda;border-bottom:2px solid var(--m-ac);flex:none}
-#meetScreen[data-char="qinche"] #meetHeader{background:#1c1613}
+  min-height:52px;background:rgba(32,26,20,.9);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  color:#f3ecda;border-bottom:none;flex:none;box-shadow:0 2px 10px rgba(0,0,0,.22)}
+#meetScreen[data-char="qinche"] #meetHeader{background:rgba(18,13,11,.92)}
 #meetBack{font-size:26px;line-height:1;cursor:pointer;padding:4px 10px;color:#f3ecda}
 #meetTitle{font-size:17px;letter-spacing:2px}
 #meetHint{display:none;font-size:12px;color:var(--m-ac2);letter-spacing:1px}
 #meetHint .d{animation:blink 1.2s infinite}
-#meetSceneBtn{margin-left:auto;font-size:13px;color:#f3ecda;border:1px solid var(--m-ac);border-radius:12px;
-  padding:3px 12px;cursor:pointer;letter-spacing:1px;background:transparent}
+#meetSceneBtn{margin-left:auto;font-size:13px;color:#f3ecda;border:1px solid rgba(255,255,255,.75);border-radius:12px;
+  padding:3px 12px;cursor:pointer;letter-spacing:1px;background:rgba(255,255,255,.12)}
 #meetArea{position:relative;z-index:1;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-#meetPaper{max-width:680px;margin:0 auto;padding:18px 16px 26px}
-.m-band{display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--m-bandc);font-size:12px;letter-spacing:2px}
-.m-band::before,.m-band::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--m-bandc));opacity:.5}
+#meetPaper{max-width:680px;margin:0 auto;padding:20px 16px 30px}
+.m-band{display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--m-bandc);font-size:12px;
+  letter-spacing:2px;text-shadow:0 1px 3px rgba(0,0,0,.25)}
+.m-band::before,.m-band::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--m-bandc));opacity:.55}
 .m-band::after{background:linear-gradient(90deg,var(--m-bandc),transparent)}
-.m-msg{margin:14px 0;animation:mIn .28s ease both}
+.m-msg{margin:16px 0;animation:mIn .28s ease both}
 @keyframes mIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.m-name{font-size:12px;color:var(--m-ac);letter-spacing:2px;margin:0 0 4px 2px}
+.m-name{font-size:12.5px;color:#fff;font-weight:700;letter-spacing:2px;margin:0 0 5px 2px;
+  text-shadow:0 1px 3px rgba(0,0,0,.28)}
 .m-msg.u{text-align:right}
-.m-msg.u .m-name{color:var(--m-ink2)}
-.m-say{display:inline-block;max-width:86%;text-align:left;font-weight:700;font-size:15.5px;line-height:1.75;
-  color:var(--m-ink);background:var(--m-saybg);border:1.5px solid var(--m-ac);border-radius:10px;
-  padding:8px 14px;margin:2px 0}
-.m-msg.u .m-say{border-color:var(--m-ac2)}
-.m-nar{display:block;max-width:96%;font-weight:400;font-size:14px;line-height:1.8;color:var(--m-ink2);margin:4px 2px}
-.m-msg.u .m-nar{margin-left:auto;text-align:right;max-width:86%}
+.m-msg.u .m-name{margin-bottom:10px;color:rgba(255,255,255,.85)}
+.m-say{display:inline-block;max-width:86%;text-align:left;font-weight:700;font-size:16px;line-height:1.75;
+  color:#33291c;background:#fffdf6;border:2.5px solid var(--m-ac);border-radius:14px 8px 12px 9px;
+  padding:9px 15px;margin:2px 0;transform:rotate(-.5deg);
+  box-shadow:2.5px 3.5px 0 rgba(60,40,15,.22)}
+#meetScreen[data-char="qinche"] .m-say{color:#f0e6d2;background:#332b25}
+.m-msg.u .m-say{border-color:var(--m-ac2);transform:rotate(.5deg);border-radius:8px 14px 9px 12px}
+.m-nar{position:relative;display:block;max-width:94%;font-weight:400;font-size:14px;line-height:1.85;
+  color:#4a3c28;background:#FAF8F2;border:1.5px solid rgba(138,122,105,.4);border-radius:4px;
+  padding:14px 16px 14px 38px;margin:6px 2px;box-shadow:3px 4px 10px rgba(50,35,15,.22);
+  background-image:
+    repeating-linear-gradient(0deg,transparent 0 23px,rgba(138,122,105,.16) 23px 24px),
+    repeating-linear-gradient(90deg,transparent 0 23px,rgba(138,122,105,.16) 23px 24px)}
+#meetScreen[data-char="qinche"] .m-nar{color:#d9cbb2;background-color:#2e2621;border-color:rgba(214,172,110,.3)}
+.m-nar::before{content:"";position:absolute;left:12px;top:10px;bottom:10px;width:10px;
+  background-image:radial-gradient(circle 4.6px at 50% 50%,var(--m-hole) 0 3.1px,rgba(255,255,255,.5) 3.2px 3.9px,transparent 4.1px);
+  background-size:10px 34px;background-repeat:repeat-y;background-position:center top}
+.m-nar::after{content:'';position:absolute;top:-9px;left:22px;width:58px;height:17px;
+  background:var(--m-ac);opacity:.42;transform:rotate(-4deg);border-radius:2px;
+  box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.m-msg.u .m-nar{margin-left:auto;text-align:left;max-width:86%}
+.m-msg.u .m-nar::after{left:auto;right:22px;background:var(--m-ac2);transform:rotate(4deg)}
 #meetBar{position:relative;z-index:2;display:none;align-items:flex-end;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));
-  background:rgba(40,32,24,.93);flex:none}
-#meetScreen[data-char="qinche"] #meetBar{background:#1c1613}
+  background:rgba(32,26,20,.9);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);flex:none;
+  box-shadow:0 -2px 10px rgba(0,0,0,.22)}
+#meetScreen[data-char="qinche"] #meetBar{background:rgba(18,13,11,.92)}
 #meetInput{flex:1;background:rgba(255,252,245,.96);border:1px solid var(--m-ac);border-radius:8px;
   color:var(--m-ink);font-family:inherit;font-size:15px;line-height:1.5;padding:8px 10px;resize:none;max-height:120px;outline:none}
 #meetSendBtn{background:var(--m-ac);color:#fff;border:none;border-radius:8px;font-family:inherit;
-  font-size:15px;letter-spacing:3px;padding:9px 16px;cursor:pointer}
+  font-size:15px;letter-spacing:3px;padding:9px 16px;cursor:pointer;box-shadow:2px 2px 0 rgba(0,0,0,.2)}
 #meetSendBtn:disabled{opacity:.5}
-#meetSceneMenu{display:none;position:absolute;top:50px;right:10px;z-index:5;background:#faf5e8;border:1px solid var(--m-ac);
-  border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.25);overflow:hidden;min-width:130px}
-#meetSceneMenu div{padding:9px 16px;font-size:14px;color:#3c2f1e;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.06)}
-#meetSceneMenu div:hover{background:rgba(232,130,58,.12)}
+/* 切片10: 两级级联选景弹层(底部抽屉·常驻自定义输入) */
+#meetSceneSheet{display:none;position:absolute;inset:0;z-index:8}
+#mssMask{position:absolute;inset:0;background:rgba(30,20,10,.38)}
+#mssPanel{position:absolute;left:0;right:0;bottom:0;margin:0 auto;max-width:680px;max-height:72%;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;background:#faf6ee;border-radius:18px 18px 0 0;box-shadow:0 -8px 28px rgba(0,0,0,.3);
+  padding:14px 16px calc(16px + env(safe-area-inset-bottom));animation:mssUp .22s ease both}
+@keyframes mssUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+.mss-title{text-align:center;font-size:15px;letter-spacing:3px;color:#6b5d45;font-weight:700;margin-bottom:2px}
+.mss-label{font-size:11px;color:#9c8a6a;letter-spacing:2px;margin:12px 0 7px 2px}
+.mss-row{display:flex;flex-wrap:wrap;gap:8px}
+.mss-pill,.mss-chip{font-family:inherit;cursor:pointer;background:rgba(255,255,255,.85);color:#4a3d28;
+  border:1.5px solid rgba(150,120,70,.4);border-radius:16px;padding:5px 13px;font-size:13.5px;line-height:1.5}
+.mss-chip{border-radius:12px;padding:4px 11px;font-size:13px}
+.mss-pill.on,.mss-chip.on{background:var(--m-ac);border-color:var(--m-ac);color:#fff}
+.mss-pill:active,.mss-chip:active{transform:scale(.96)}
+.mss-rooms{background:rgba(150,120,70,.08);border-radius:12px;padding:2px 10px 10px;margin-top:4px}
+.mss-custom{display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1.5px dashed rgba(150,120,70,.35)}
+#mssCustom{flex:1;min-width:0;border:1.5px solid rgba(150,120,70,.4);border-radius:10px;background:rgba(255,255,255,.9);
+  color:#4a3d28;font-family:inherit;font-size:14px;padding:8px 12px;outline:none}
+#mssCustom::placeholder{color:#b3a385}
+#mssGoBtn{background:var(--m-ac);color:#fff;border:none;border-radius:10px;font-family:inherit;
+  font-size:14px;letter-spacing:2px;padding:8px 16px;cursor:pointer}
 .meet-entry{font-family:"Songti SC","Noto Serif SC",serif;font-size:11px;color:#666;letter-spacing:1px;
   border:1px solid #bbb;border-radius:10px;padding:1px 8px;margin-top:4px;cursor:pointer;display:inline-block}
 .meet-entry:active{opacity:.6}
@@ -210,7 +248,16 @@ html.keyboard-open #inputBar{padding-bottom:8px}
       <div id="meetSceneBtn" onclick="toggleSceneMenu(event)">&#9670; <span id="meetSceneName"></span></div>
     </div>
     <div id="meetArea"><div id="meetPaper"></div></div>
-    <div id="meetSceneMenu"></div>
+    <div id="meetSceneSheet"><div id="mssMask" onclick="closeSceneSheet()"></div>
+      <div id="mssPanel" onclick="event.stopPropagation()">
+        <div class="mss-title">去哪儿见面</div>
+        <div id="mssRecentWrap" style="display:none"><div class="mss-label">最近去过</div><div class="mss-row" id="mssRecent"></div></div>
+        <div class="mss-label">约会点</div><div class="mss-row" id="mssCommon"></div>
+        <div class="mss-label" id="mssOwnLabel">TA的地盘</div><div class="mss-row" id="mssOwn"></div>
+        <div class="mss-rooms" id="mssRoomsWrap" style="display:none"><div class="mss-label" id="mssRoomsLabel"></div><div class="mss-row" id="mssRooms"></div></div>
+        <div class="mss-custom"><input id="mssCustom" maxlength="30" placeholder="或写个地方：临空市 / 深空隧道 / 出差地…" onkeydown="if(event.key==='Enter'){event.preventDefault();pickCustomScene()}"><button id="mssGoBtn" type="button" onclick="pickCustomScene()">就去这儿</button></div>
+      </div>
+    </div>
     <div id="meetBar">
       <textarea id="meetInput" rows="1" autocomplete="off" oninput="autoGrow(this)" onkeydown="meetKey(event)"></textarea>
       <button id="meetSendBtn" onclick="meetSend()">落笔</button>
@@ -709,7 +756,16 @@ async function sendMsg(){
 }
 
 /* ---------- 切片9: 见面屏(意识同步·小说排版) ---------- */
-const MEET_SCENES=['静室','天台·夜','雨夜·窗边','咖啡馆','老宅·院里'];
+/* 切片10: 场景两级级联 — BASE共享房间 + COMMON通用约会点 + 角色专属地盘 */
+const BASE_ROOMS=['卧室','客厅','书房','厨房','浴室','阳台'];
+const MEET_COMMON=['兔咪火锅','甜品店','Twinkle潮玩店','奶茶店'];
+const CHAR_SCENES={
+  xiazhou:{'远空舰队':[],'执舰官办公室':[],'天行浮岛的家':[...BASE_ROOMS],'小墨的家（临空）':[...BASE_ROOMS],'临空老宅':[...BASE_ROOMS],'DAA航天署':[]},
+  shenxinghui:{'猎人协会':[],'训练场':[],'禁猎区':[],'沈星回的家（602）':[...BASE_ROOMS],'小墨的家（502）':[...BASE_ROOMS]},
+  qinche:{'N109区·暗点总部':['拳击室','会客室','落地窗'],'拍卖场':[],'小墨的家（临空）':[...BASE_ROOMS]},
+  lishen:{'Asko医院':['心外门诊诊室','手术室'],'黎深的家（别墅）':[...BASE_ROOMS,'院子','别墅一楼','别墅二楼'],'小墨的家（临空猎人公寓）':[...BASE_ROOMS]},
+  qiyu:{'画室':[],'画展':[],'白沙湾别墅':[...BASE_ROOMS,'画室','私人沙滩'],'小墨的家（临空）':[...BASE_ROOMS,'画室','浴缸']}
+};
 let meetChar=null,meetScene='',meetSince={},meetRendered=new Set();
 
 function mMeta(m){if(!m.meta)return{};if(typeof m.meta==='object')return m.meta;try{return JSON.parse(m.meta)}catch(e){return{}}}
@@ -749,10 +805,10 @@ function meetNovel(cid,msg){
 }
 function meetScroll(){const a=$('meetArea');if(a)a.scrollTop=a.scrollHeight}
 async function openMeet(cid){
-  meetChar=cid;meetRendered=new Set();const _sc=CMAP[cid].scene;meetScene=(_sc&&MEET_SCENES.includes(_sc))?_sc:MEET_SCENES[0];   /* 审计P2-6: 恢复最近场景 */
+  meetChar=cid;meetRendered=new Set();meetScene=CMAP[cid].scene||'';   /* 审计P2-6: 恢复最近场景(切片10:自由文本,未定=空串) */
   $('listScreen').style.display='none';$('chatScreen').style.display='none';
   const ms=$('meetScreen');ms.style.display='flex';ms.dataset.char=cid;
-  $('meetTitle').textContent=CMAP[cid].name;$('meetSceneName').textContent=meetScene;
+  $('meetTitle').textContent=CMAP[cid].name;$('meetSceneName').textContent=meetScene||'选场景';
   $('meetBar').style.display='flex';$('meetPaper').innerHTML='';
   try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene})})}catch(e){}
   try{
@@ -773,18 +829,57 @@ async function closeMeet(){
   if(cid){try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat'})})}catch(e){}}
   refreshDigest();
 }
-function toggleSceneMenu(ev){if(ev)ev.stopPropagation();
-  const m=$('meetSceneMenu');
-  if(m.style.display==='block'){m.style.display='none';return}
-  m.innerHTML='';MEET_SCENES.forEach(s=>{const d=document.createElement('div');d.textContent=s;d.onclick=()=>pickScene(s);m.appendChild(d)});   /* 审计P2-7: DOM构建,场景名不入事件字符串 */
-  m.style.display='block';
+/* ---------- 切片10: 场景两级级联弹层(最近×3 + 通用约会点 + 角色地盘→房间chips + 自定义) ---------- */
+function mssRecentGet(){try{const a=JSON.parse(localStorage.getItem('meet_recent_scenes')||'[]');
+  return Array.isArray(a)?a.filter(x=>typeof x==='string'&&x).slice(0,3):[]}catch(e){return[]}}
+function mssRecentPush(s){try{   /* 去重保序,只留3条 */
+  const a=mssRecentGet().filter(x=>x!==s);a.unshift(s);
+  localStorage.setItem('meet_recent_scenes',JSON.stringify(a.slice(0,3)));
+}catch(e){}}
+let mssL1='';   /* 当前展开二级的一级场景名 */
+function mssChip(row,cls,label,cur,fn){   /* 审计P2-7沿袭: DOM构建,场景名只进textContent不进事件字符串 */
+  const b=document.createElement('button');b.type='button';b.className=cls+(label===cur?' on':'');
+  b.textContent=label;b.onclick=ev=>{ev.stopPropagation();fn()};row.appendChild(b);
 }
+function buildSceneSheet(){
+  const own=CHAR_SCENES[meetChar]||{};
+  $('mssOwnLabel').textContent=(CMAP[meetChar]?CMAP[meetChar].name:'TA')+'的地盘';
+  const rec=mssRecentGet();
+  $('mssRecentWrap').style.display=rec.length?'block':'none';
+  const rr=$('mssRecent');rr.innerHTML='';rec.forEach(s=>mssChip(rr,'mss-chip',s,'',()=>pickScene(s)));
+  const cr=$('mssCommon');cr.innerHTML='';MEET_COMMON.forEach(s=>mssChip(cr,'mss-pill',s,'',()=>pickScene(s)));
+  const or_=$('mssOwn');or_.innerHTML='';Object.keys(own).forEach(s=>mssChip(or_,'mss-pill',s,mssL1,()=>mssOpenL1(s)));
+  const w=$('mssRoomsWrap'),rooms=(mssL1&&own[mssL1])||[];
+  if(rooms.length){   /* 二级房间chips: 整屋可不选 */
+    w.style.display='block';$('mssRoomsLabel').textContent=mssL1+' · 挑个房间';
+    const rm=$('mssRooms');rm.innerHTML='';
+    mssChip(rm,'mss-chip',mssL1,meetScene,()=>pickScene(mssL1));   /* 第一个=整屋(纯一级) */
+    rooms.forEach(r=>mssChip(rm,'mss-chip',mssL1+'·'+r,meetScene,()=>pickScene(mssL1+'·'+r)));
+  }else w.style.display='none';
+}
+function mssOpenL1(s){const rooms=(CHAR_SCENES[meetChar]||{})[s]||[];
+  if(!rooms.length){pickScene(s);return}   /* 无房间的一级=直接选定 */
+  mssL1=(mssL1===s)?'':s;buildSceneSheet();   /* 再点一次收起房间chips */
+}
+function toggleSceneMenu(ev){if(ev)ev.stopPropagation();
+  const m=$('meetSceneSheet');
+  if(m.style.display==='block'){closeSceneSheet();return}
+  mssL1='';buildSceneSheet();m.style.display='block';
+}
+function closeSceneSheet(){const m=$('meetSceneSheet');if(!m)return;
+  m.style.display='none';mssL1='';const c=$('mssCustom');if(c)c.value='';}
 async function pickScene(s){
-  $('meetSceneMenu').style.display='none';
-  if(!meetChar||s===meetScene)return;meetScene=s;
+  closeSceneSheet();
+  if(!meetChar)return;
+  mssRecentPush(s);
+  if(s===meetScene)return;meetScene=s;
   $('meetSceneName').textContent=s;
   const b=document.createElement('div');b.className='m-band';b.textContent=`场景 · ${s}`;$('meetPaper').appendChild(b);meetScroll();
   try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:meetChar,mode:'meet',scene:s})})}catch(e){}
+}
+function pickCustomScene(){const el=$('mssCustom'),v=(el.value||'').trim();
+  if(!v){toast('先写个地方呀');return}
+  pickScene(v.slice(0,30));   /* 大场景走自定义,后端30字校验对齐 */
 }
 async function meetPoll(){
   if(!meetChar)return;
@@ -812,7 +907,7 @@ async function meetSend(){
   sending=false;$('meetSendBtn').disabled=false;
 }
 function meetKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();meetSend()}}
-document.addEventListener('click',()=>{const m=$('meetSceneMenu');if(m)m.style.display='none'});
+document.addEventListener('click',()=>closeSceneSheet());
 
 /* ---------- M4: 会话背景(切片5: 按角色分桶) + 失败重试 ---------- */
 const LS_BG='chatapp_bg_all';

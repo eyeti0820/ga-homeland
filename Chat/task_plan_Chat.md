@@ -108,4 +108,4 @@
 - OC 审计(GLM-5.3+gstack)核出 4×P1+9×P2,逐条人工复核后修 9 条(2条不成立/3条微): 关键=P1-2 打标锚定 user 发送行(新 `_mode_of_user_row`,实弹铁证: meet中发送→秒切chat→assistant行仍标meet); P1-1 历史分页丢 mode 过滤; P2-3 digest json_valid 护栏; P2-2 mode_post 同步写包 to_thread; P2-1 note 控制字符 400; P2-6 digest 带 scene+system 行补标; P2-9 状态行作废声明; P2-4/5/7 前端微修(P1-3 toast 化)
 - 实弹: note 400 / digest{mode,scene} / meet_state KV 清净; tests 11→25 绿; DB 清残留(56-58+死KV,星回曾卡 meet 态); 服务精确 PID 重启
 - 审计报告留档 /tmp/oc_audit_out.txt(重启即失,结论已并入本文件+notes_slice9)
-- 遗留不变: 切片10 皮肤验收 / 切片11 素材(主人找素材中,场景名"静室/天台"待主人替换)
+- 遗留: 切片10=素材接入+**场景系统两级级联重构**(1028已拍板,规格@handoff_Chat.md文末)+五主题验收 / 切片11=剩余生图素材

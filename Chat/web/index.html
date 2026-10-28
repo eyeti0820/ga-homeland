@@ -796,7 +796,7 @@ const CHAR_SCENES={
   lishen:{'Asko医院':['心外门诊诊室','手术室'],'黎深的家（别墅）':[...BASE_ROOMS,'院子','别墅一楼','别墅二楼'],'小墨的家（临空猎人公寓）':[...BASE_ROOMS]},
   qiyu:{'画室':[],'画展':[],'白沙湾别墅':[...BASE_ROOMS,'画室','私人沙滩'],'小墨的家（临空）':[...BASE_ROOMS,'画室','浴缸']}
 };
-let meetChar=null,meetScene='',meetSince={},meetRendered=new Set();
+let meetChar=null,meetScene='',meetSince={},meetRendered=new Set(),meetFirstSeq={},meetLoading=false;   /* meetFirstSeq=翻页游标(1028-MP) */
 
 function mMeta(m){if(!m.meta)return{};if(typeof m.meta==='object')return m.meta;try{return JSON.parse(m.meta)}catch(e){return{}}}
 function meetFilter(m){const mt=mMeta(m);   /* meet态相关行才进见面屏 */
@@ -819,11 +819,12 @@ function meetParse(text){   /* 行级解析: 括号段=旁白, 其余=台词 */
   });
   return out.length?out:[{t:'say',s:text||'……'}];
 }
-function meetNovel(cid,msg){   /* 切片10.1: user=整条胶带; assistant=羊皮纸大卡(旁白直排+台词胶带) */
+function meetNovel(cid,msg,frag){   /* 切片10.1: user=整条胶带; assistant=羊皮纸大卡(旁白直排+台词胶带); frag=翻页前插宿主(1028-MP) */
   if(meetRendered.has(msg.seq))return;meetRendered.add(msg.seq);
   const paper=$('meetPaper');if(!paper)return;
+  const host=frag||paper;
   const wrap=document.createElement('div');
-  if(msg.role==='system'){wrap.className='m-band';wrap.textContent=msg.content||'';paper.appendChild(wrap);return}
+  if(msg.role==='system'){wrap.className='m-band';wrap.textContent=msg.content||'';host.appendChild(wrap);return}
   wrap.className='m-msg '+(msg.role==='user'?'u':'a');
   const nm=document.createElement('div');nm.className='m-name';
   if(msg.role==='user'){nm.innerHTML=avatarUser(26);nm.style.cssText='display:inline-flex;align-items:center;margin-bottom:8px'}else{nm.textContent=CMAP[cid]?CMAP[cid].name:cid;}wrap.appendChild(nm);
@@ -843,7 +844,7 @@ function meetNovel(cid,msg){   /* 切片10.1: user=整条胶带; assistant=羊�
       }
     });
   }
-  paper.appendChild(wrap);
+  host.appendChild(wrap);   /* 1028-MP: frag模式进前插宿主,实时追加才落paper尾 */
 }
 function meetScroll(){const a=$('meetArea');if(a)a.scrollTop=a.scrollHeight}
 async function openMeet(cid){
@@ -854,19 +855,44 @@ async function openMeet(cid){
   $('meetBar').style.display='flex';$('meetPaper').innerHTML='';
   try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene})})}catch(e){}
   try{
-    const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=50`);
-    let msgs=(r.msgs||[]).filter(meetFilter);
-    for(let i=msgs.length-1;i>=0;i--){if(msgs[i].role==='system'){msgs=msgs.slice(i);break}}   /* 只渲染最近一轮同步 */
+    const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=20`);   /* 1028-MP: 对齐聊天屏=默认拉最近20条原始行(见面文字多),不再只渲染最近一轮同步 */
+    const raw=r.msgs||[];
+    const msgs=raw.filter(meetFilter);
     msgs.forEach(m=>meetNovel(cid,m));
-    const last=msgs[msgs.length-1];
-    meetSince[cid]=last?last.seq:0;
-    if(last)setReadSeq(cid,last.seq);
+    const last=raw[raw.length-1];
+    meetSince[cid]=last?last.seq:0;                 /* 增量游标取原始末行:滤掉的chat行不重复拉 */
+    meetFirstSeq[cid]=raw.length?raw[0].seq:1;      /* 翻页游标取原始首行:整页滤空仍可续翻 */
+    if(msgs.length)setReadSeq(cid,msgs[msgs.length-1].seq);
     if(!msgs.some(m=>m.role!=='system')){const b=document.createElement('div');b.className='m-empty';
       b.innerHTML=`<img src="${BASE}/media/badges/empty_screen.png" alt="">`;
       const paper=$('meetPaper');paper.insertBefore(b,paper.firstChild)}
     meetScroll();
   }catch(e){toast('加载失败: '+e.message)}
 }
+/* 1028-MP: 见面屏向上翻页——对齐聊天屏逻辑:滚动空间门(不满屏不翻)+DocumentFragment前插(不重建DOM)+底锚保位,教训沿承scroll热修1028 */
+$('meetArea').addEventListener('scroll',async()=>{
+  if(!meetChar||meetLoading)return;
+  const ma=$('meetArea');
+  if(ma.scrollTop<60 && ma.scrollHeight-ma.clientHeight>120){
+    const before=meetFirstSeq[meetChar];
+    if(!before||before<=1)return;
+    meetLoading=true;
+    try{
+      const r=await api(`/api/history?char_id=${encodeURIComponent(meetChar)}&before_seq=${before}&limit=20`);
+      if(r.msgs&&r.msgs.length){
+        const paper=$('meetPaper'),prevBottom=ma.scrollHeight-ma.scrollTop;
+        const frag=document.createDocumentFragment();
+        r.msgs.filter(meetFilter).forEach(m=>meetNovel(meetChar,m,frag));
+        const grew=frag.childElementCount;   /* insertBefore会搬空frag,计数须前置 */
+        paper.insertBefore(frag,paper.querySelector('.m-empty')||paper.firstChild);
+        if(grew&&paper.querySelector('.m-empty'))paper.querySelector('.m-empty').remove();   /* 翻出正文后撤空屏插画,避免插画叠在历史正文上方 */
+        meetFirstSeq[meetChar]=r.msgs[0].seq;
+        ma.scrollTop=ma.scrollHeight-prevBottom;
+      }
+    }catch(e){}
+    meetLoading=false;
+  }
+});
 async function closeMeet(){
   const cid=meetChar;meetChar=null;
   $('meetScreen').style.display='none';$('listScreen').style.display='flex';

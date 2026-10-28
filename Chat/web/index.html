@@ -353,7 +353,7 @@ function avatarUser(sz){
     :`<div class="avatar" style="background:#8a97a8;width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.4)}px">我</div>`)}
 let digest=[],activeChar=null,sinceSeq={},rendered=new Set(),firstSeqInDom={},tick=0,sending=false,loadingHistory=false;
 let errPills={};   /* 审计P0-1: seq->红!pill元素, 与poll.err_seqs对齐 */
-let lastTsShown={};
+let lastTsShown={};let pageTs=0;   /* 热修1028: 翻页前插页内时间眉条游标 */
 const LS_READ='chatapp_read_seq';
 const LS_CACHE_PREFIX='chatapp_msg_cache_';   /* 切片7: 本地离线消息骨架秒开 */
 let ctxMenuTargetSeq=null;
@@ -561,17 +561,19 @@ async function refreshDigest(){
 }
 
 /* ---------- 聊天屏 ---------- */
-function appendRow(cid,msg,stagger){
-  const area=$('msgArea');
-  if(msg.ts-(lastTsShown[cid]||0)>300){
+function appendRow(cid,msg,stagger,frag){   /* 热修1028: frag模式=翻页前插构建,不触底滚,眉条用页内游标pageTs */
+  const area=$('msgArea');const host=frag||area;
+  if(frag){ if(msg.ts-pageTs>300){const d=document.createElement('div');d.className='time-pill';
+    d.innerHTML=`<span>${fmtTime(msg.ts)}</span>`;host.appendChild(d);} pageTs=msg.ts;
+  }else if(msg.ts-(lastTsShown[cid]||0)>300){
     const d=document.createElement('div');d.className='time-pill';
-    d.innerHTML=`<span>${fmtTime(msg.ts)}</span>`;area.appendChild(d);
+    d.innerHTML=`<span>${fmtTime(msg.ts)}</span>`;host.appendChild(d);
   }
-  lastTsShown[cid]=msg.ts;
+  if(!frag)lastTsShown[cid]=msg.ts;
   if(msg.role==='system'){
     const d=document.createElement('div');d.className='sys-pill';
-    d.innerHTML=`<span>${esc(msg.content)}</span>`;area.appendChild(d);
-    rendered.add(msg.seq);scrollBottom();return;
+    d.innerHTML=`<span>${esc(msg.content)}</span>`;host.appendChild(d);
+    rendered.add(msg.seq);if(!frag)scrollBottom();return;
   }
   const row=document.createElement('div');row.className='row '+msg.role;row.dataset.seq=msg.seq;
   attachBubbleContextMenu(row,msg.seq);   /* 切片7: 长按/右键气泡弹出删除菜单 */
@@ -579,12 +581,12 @@ function appendRow(cid,msg,stagger){
   av.innerHTML=(msg.role==='user')?avatarUser(38):avatarHtml(cid,38);   /* 切片5: 图片头像 */
   row.appendChild(av.firstChild);
   const wrap=document.createElement('div');wrap.className='bubbles';row.appendChild(wrap);
-  area.appendChild(row);
+  host.appendChild(row);
   const mt=(msg.meta&&typeof msg.meta==='object')?msg.meta:{};
   if(msg.role==='user'&&mt.error){   /* M4: 失败消息红!pill, 点击重试 */
     const ep=document.createElement('div');ep.className='sys-pill errPill';
     ep.textContent='⚠ '+((typeof mt.error==='string'&&mt.error)?mt.error:'回复失败')+' · 点击重试';
-    ep.onclick=()=>retryMsg(cid,msg.seq,ep);area.appendChild(ep);
+    ep.onclick=()=>retryMsg(cid,msg.seq,ep);host.appendChild(ep);
     errPills[msg.seq]=ep;
   }
   if(msg.kind==='image_in'||msg.kind==='image_out'){   /* M3: 图片消息缩略图+识图注记 */
@@ -617,7 +619,7 @@ function appendRow(cid,msg,stagger){
   }
   rendered.add(msg.seq);
   if(!firstSeqInDom[cid]||msg.seq<firstSeqInDom[cid])firstSeqInDom[cid]=msg.seq;
-  scrollBottom();
+  if(!frag)scrollBottom();
 }
 function scrollBottom(){const a=$('msgArea');a.scrollTop=a.scrollHeight}
 function applyMsgs(cid,msgs,stagger){
@@ -710,17 +712,20 @@ async function pollOnce(){
 /* 历史加载: 顶部触底拉50条, 重建DOM保持滚动位置 */
 $('msgArea').addEventListener('scroll',async()=>{
   if(!activeChar||loadingHistory)return;
-  if($('msgArea').scrollTop<60){
+  const area=$('msgArea');
+  if(area.scrollTop<60 && area.scrollHeight-area.clientHeight>120){   /* 热修1028-A: 无滚动空间(内容不满屏)绝不翻页——旧版任何scroll事件都当"滚到顶",轻触即误翻 */
     const before=firstSeqInDom[activeChar];
     if(!before||before<=1)return;
-    loadingHistory=true;
+    loadingHistory=true;pageTs=0;
     try{
       const r=await api(`/api/history?char_id=${encodeURIComponent(activeChar)}&before_seq=${before}&limit=50`);
-      if(r.msgs&&r.msgs.length){
-        const area=$('msgArea'),h0=area.scrollHeight;
-        area.innerHTML='';rendered=new Set();lastTsShown[activeChar]=0;firstSeqInDom[activeChar]=r.msgs[0].seq;
-        r.msgs.filter(chatFilter).forEach(m=>appendRow(activeChar,m,false));   /* 审计P1-1: 分页也走chat滤,meet行不漏进聊天屏;firstSeq取原始首行(整页滤空仍可续翻) */
-        area.scrollTop=area.scrollHeight-h0;
+      if(activeChar&&r.msgs&&r.msgs.length&&r.msgs[0].seq<before){   /* 防同窗重复返回死循环 */
+        firstSeqInDom[activeChar]=r.msgs[0].seq;   /* 审计P1-1保留: firstSeq取原始首行(整页滤空仍可续翻) */
+        const prevBottom=area.scrollHeight-area.scrollTop;   /* 视口底锚定 */
+        const frag=document.createDocumentFragment();
+        r.msgs.filter(chatFilter).forEach(m=>{if(!rendered.has(m.seq))appendRow(activeChar,m,false,frag)});   /* 分页也走chat滤,meet行不漏进聊天屏 */
+        area.insertBefore(frag,area.firstChild);   /* 热修1028-B: 前插不重建——旧版innerHTML=''重建丢现有行,新消息下屏且增量不补 */
+        area.scrollTop=area.scrollHeight-prevBottom;
       }
     }catch(e){}
     loadingHistory=false;

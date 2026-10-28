@@ -127,4 +127,5 @@
 - **前端**: .meet-entry 文字票券钮→34px贴纸图钮(rotate-4°/hover转正放大/drop-shadow);空屏=见面屏无对话内容(仅系统横幅)时 paper 头部插 .m-empty 插画卡(min(58vw,250px) 微倾圆角软影"贴的照片卡");⚠原 `!msgs.length` 分支永不触发——/api/mode 自动插同步横幅行 msgs 恒≥1,须用 `!msgs.some(m=>m.role!=='system')`(勿回退!);备份 .bak_1028_s11
 - **验收**: 5徽标256px全载入;沈星回空屏 m-empty+band DOM✓ vision四项过;列表五徽标齐无溢出;chat屏零改动
 - **遗留**: MEET_BTN 死代码(待清)/黎深镂空风格与其余四款圆底托略异/按钮纯图无字(要加小字再议)/手机端暗光验收/列表屏整体仍IM风(切片12+)
+- **返工(1028深夜+1)**: 生成A1观感不佳→改官方圆图标(恋深Q版状态头像),白底板行宽剖面定圆(r≈466五枚一致)+抗锯齿圆mask抠512px,裁夏款标牌;零前端改动;旧A1→media/badges/gen_a1/;列表vision 8.5/10;素材iCloud evict须逐文件brctl download
 - 切片12 = persona 注入(方案§6)

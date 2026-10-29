@@ -51,7 +51,7 @@ check("夏以昼19:00不提云际列车(防天天长途)", "云际列车" not in
 
 line = chatapp._state_line("xiazhou", now=ts(2026, 10, 31, 14, 30))  # 周六=周末模式
 check("周六注入周末态", "周末" in line, line)
-check("周六不按工作日段落", "巡航" not in line, line)
+check("周六状态行无工作日时刻段", ("-" not in line.split("(")[-1]), line)   # 1029主人: 周末可值班巡航, 断言只卡"不拼工作日时段"
 
 line = chatapp._state_line("lishen", now=ts(2026, 10, 29, 6, 45))    # 晨跑段
 check("黎深06:45晨跑(主人补录段)", "晨跑" in line, line)
@@ -82,5 +82,24 @@ for c in ["xiazhou", "shenxinghui", "qiyu", "qinche", "lishen"]:
     check(f"overlay({c})非空含作息节", bool(ov) and "作息" in ov and "主人的消息永远要回" in ov,
           (ov or "")[:60])
 
+
+
+# ---- 6. 切片12.1: _refresh_schedule_overlay 每轮换版 ----
+class _FakeAgent:
+    def __init__(self, ps): self.extra_sys_prompts = ps
+
+_ov = chatapp.SCHEDULE.overlay_text("lishen")
+_a = _FakeAgent([_ov])                       # 已是当天版 -> 原样不动
+chatapp._refresh_schedule_overlay(_a, "lishen")
+check("refresh当天版原样", _a.extra_sys_prompts == [_ov], str(_a.extra_sys_prompts))
+_b = _FakeAgent([_ov + "\n- 过期行"])        # stale版 -> 被换新
+chatapp._refresh_schedule_overlay(_b, "lishen")
+check("refresh换掉stale版", _b.extra_sys_prompts == [_ov], str(_b.extra_sys_prompts))
+_c = _FakeAgent([])                          # 未注 -> 补注
+chatapp._refresh_schedule_overlay(_c, "lishen")
+check("refresh补注缺失", _c.extra_sys_prompts == [_ov], str(_c.extra_sys_prompts))
+_d = _FakeAgent(["- 别的prompt不动", _ov])
+chatapp._refresh_schedule_overlay(_d, "lishen")
+check("refresh不伤邻位", _d.extra_sys_prompts == ["- 别的prompt不动", _ov], str(_d.extra_sys_prompts))
 print(f"\n[PASS {PASS} / FAIL {FAIL}]")
 sys.exit(1 if FAIL else 0)

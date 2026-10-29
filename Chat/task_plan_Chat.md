@@ -129,3 +129,4 @@
 - **遗留**: MEET_BTN 死代码(待清)/黎深镂空风格与其余四款圆底托略异/按钮纯图无字(要加小字再议)/手机端暗光验收/列表屏整体仍IM风(切片12+)
 - **返工(1028深夜+1)**: 生成A1观感不佳→改官方圆图标(恋深Q版状态头像),白底板行宽剖面定圆(r≈466五枚一致)+抗锯齿圆mask抠512px,裁夏款标牌;零前端改动;旧A1→media/badges/gen_a1/;列表vision 8.5/10;素材iCloud evict须逐文件brctl download
 - **切片12毕(1029)**: 作息注入——`Chat/schedule.py`五角色工作日时刻表+chatapp四补丁(loader/agent overlay/状态行拼时段/主动门缩窗); tests/test_slice12_schedule.py 22绿, slice8改前缀断言后48绿; 备份.bak_1029_s12; 遗留=黎深05:30冲突待拍板/周末出差态/效果观察(详见handoff§二)
+- **切片12.1毕(1029)**: 周末态+动态overlay——主人三指示落地: ①黎深persona删"05:30晨跑，作息极规律"句(备份assets/personas/lishen.md.bak_1029_run,人设层唯一直接改动) ②夏以昼weekend删"回临空陪家人"→"舰队偶有临时值班或巡航任务, 其余随心情安排" ③overlay按当天动态两版: 工作日=时刻表/周末·节假日(HOLIDAYS)=一行自由安排(表根本不进prompt,不赌权重), chatapp新`_refresh_schedule_overlay`每轮换版(agent常驻跨天不stale), 主链路+主动链路两挂点, fail-open; 回归48/25/26全绿; 服务66057已载新码; 效果观察待周末实测

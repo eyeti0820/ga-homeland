@@ -670,6 +670,7 @@ async def _process_job(job):
 
     svc = _svc(char)
     agent = await asyncio.to_thread(svc.get_agent)   # S3: 懒构建挪线程池, 防构建耗时冻结事件循环
+    _refresh_schedule_overlay(agent, char)   # 切片12.1: overlay按当天动态换版(周末表不进prompt)
     try:
         mem = await asyncio.to_thread(svc.ctx.recall, user_text)
     except Exception as e:
@@ -846,6 +847,26 @@ def _fmt_since(ts, now=None):
     return f"始于{when}·{durs}"
 
 
+def _refresh_schedule_overlay(agent, char):
+    """切片12.1: 作息overlay按当天动态换版(工作日=时刻表/周末·节假日=自由安排一行, 表不进prompt);
+    agent常驻跨天也不stale; 找不到旧overlay就补注(兼容构建期未注的老agent); fail-open"""
+    if not SCHEDULE:
+        return
+    try:
+        ov = SCHEDULE.overlay_text(char)
+        if not ov:
+            return
+        ps = agent.extra_sys_prompts
+        for i, p in enumerate(ps):
+            if isinstance(p, str) and p.startswith("## 家园Chat·IM场景补充"):
+                if ps[i] != ov:
+                    ps[i] = ov
+                return
+        ps.append(ov)
+    except Exception as e:
+        print(f"[chatapp] {char}: refresh schedule overlay failed(fail-open): {e}", flush=True)
+
+
 def _state_line(char, now=None):
     """每轮现读meta拼状态行(§3.3): trim裁不掉当前态(每轮重注), history旧行自然淘汰"""
     st = _get_meet_state(char)
@@ -908,6 +929,7 @@ async def _proactive_once(char):
     """生成并发送一条主动消息(文本only, 清洗/围栏/ingest与_process_job完全同款)"""
     svc = _svc(char)
     agent = await asyncio.to_thread(svc.get_agent)
+    _refresh_schedule_overlay(agent, char)   # 切片12.1: 主动消息也走当天版overlay
     # 切片8§3.4: 按mode分支trigger/recall; gates不动(双3h+时段照旧)
     st = _get_meet_state(char)
     meet = st.get("mode") == "meet"

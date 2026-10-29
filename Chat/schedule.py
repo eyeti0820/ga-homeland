@@ -4,9 +4,11 @@
   · 夏以昼 18:00-20:00 默认"下班回天行的家"(周末才回临空, 防止天天云际列车长途)
   · 黎深补 06:30-07:00 晨跑(主人补录)
 用法(chatapp.py):
-  overlay_text(char)         -> persona后追加的Chat场景块(懒构建时一次)
+  overlay_text(char, now=None) -> persona后追加的Chat场景块; 按当天动态两版——
+                              工作日=时刻表 / 周末·节假日=一行自由安排(表不进prompt)
   state_extra(char, now)     -> 状态行追加段(每轮现拼, trim裁不掉)
   proactive_window(char)     -> 主动消息活跃窗(分钟, None=走全局8-23默认)
+  chatapp每轮 _refresh_schedule_overlay 换版, agent常驻跨天也不stale
 自测: python3 schedule.py  (覆盖断言+样例输出)
 """
 import time as _time
@@ -31,7 +33,7 @@ SCHEDULES = {
             ("00:00", "06:00", "睡觉"),
         ],
         "occasional": "偶有探索未知深空隧道的巡航任务, 随舰队出差几周甚至几月, 有危险性(不定期, 发生时聊天里自然体现)",
-        "weekend": "周末一般乘云际列车回临空, 陪家里人、给妹妹做饭",
+        "weekend": "舰队偶有临时值班或巡航任务, 其余随心情安排",   # 1029主人: 勿写死回临空
         "proactive": None,          # 醒06:00-24:00, 走全局默认8-23
     },
     "shenxinghui": {
@@ -163,22 +165,38 @@ def proactive_window(char):
     return cfg.get("proactive") if cfg else None
 
 
-def overlay_text(char):
-    """Chat场景补充块(persona后追加, 仅本通道生效)"""
+def _is_weekendish(now=None):
+    """-> (是周末/节假日, 标签)"""
+    lt = _time.localtime(_time.time() if now is None else now)
+    date = _time.strftime("%Y-%m-%d", lt)
+    if date in HOLIDAYS:
+        return True, "节假日"
+    return lt.tm_wday >= 5, "周末"
+
+
+def overlay_text(char, now=None):
+    """Chat场景补充块(persona后追加, 仅本通道生效)
+    切片12.1: 按当天动态出两版——工作日=时刻表; 周末/节假日=一行自由安排, 工作日表
+    根本不进prompt(不赌"一句提示压得住整张表"的权重), chatapp每轮refresh换版"""
     cfg = SCHEDULES.get(char)
     if not cfg:
         return ""
     lines = [
         f"## 家园Chat·IM场景补充(仅本聊天通道生效, {cfg['name']}专属)",
         "- 这里是仿微信的私聊IM: 按「语言风格」节的规矩一条条发短消息即可, 人设其余内容(性格/边界/台词风格/记忆)全部照常生效; 「微信群聊(值守场景)」节是微信通道的说明, 此处忽略",
-        f"- 你的工作日作息(你真实生活的底色——自然融进聊天就好, 别播报式打卡、别每条消息都报时间行程; 现在几点/你在干嘛, 每轮的[状态]行会告诉你, 以它为准):",
     ]
+    tail = ["- 主人的消息永远要回: 睡着/手术中/忙碌时被吵到, 就按你的人设自然反应(带睡意、回得简短、懒懒的都行), 贴当下状态, 不装没事也不拒答"]
+    wk, tag = _is_weekendish(now)
+    if wk:
+        lines.append(f"- 今天{tag}: 不按工作日作息表, 时间自由安排——{cfg['weekend']}")
+        lines.append(f"- 变数: {cfg['occasional']}")
+        return "\n".join(lines + tail)
+    lines.append("- 你的工作日作息(你真实生活的底色——自然融进聊天就好, 别播报式打卡、别每条消息都报时间行程; 现在几点/你在干嘛, 每轮的[状态]行会告诉你, 以它为准):")
     for a, b, act in cfg["workday"]:
         lines.append(f"  {a}-{b} {act}")
     lines.append(f"  偶有: {cfg['occasional']}")
     lines.append(f"  周末/节假日不按上表: {cfg['weekend']}")
-    lines.append("- 主人的消息永远要回: 睡着/手术中/忙碌时被吵到, 就按你的人设自然反应(带睡意、回得简短、懒懒的都行), 贴当下状态, 不装没事也不拒答")
-    return "\n".join(lines)
+    return "\n".join(lines + tail)
 
 
 # ---------------- 自测 ----------------
@@ -224,5 +242,12 @@ if __name__ == "__main__":
     print("[工作日样例·黎深]", state_extra("lishen", now=thu14))
     print("[工作日样例·沈星回凌晨1点]", state_extra("shenxinghui", now=base + 60))
     for c in SCHEDULES:
-        print(f"\n{'='*20} overlay({c}) {'='*20}\n{overlay_text(c)}")
+        import re as _re
+        ov_wd = overlay_text(c, now=thu14)
+        ov_wk = overlay_text(c, now=sat)
+        assert "工作日作息" in ov_wd and _re.search(r"\d\d:\d\d-\d\d:\d\d", ov_wd), f"{c} 工作日版缺时刻表"
+        assert not _re.search(r"\d\d:\d\d-\d\d:\d\d", ov_wk), f"{c} 周末版混入时刻表"
+        assert "时间自由安排" in ov_wk and "主人的消息永远要回" in ov_wk, f"{c} 周末版缺自由安排/永远要回"
+        print(f"\n{'='*20} overlay({c} 工作日版) {'='*20}\n{ov_wd}")
+        print(f"{'='*20} overlay({c} 周末版) {'='*20}\n{ov_wk}")
     print("\n全部自测通过 ✅")

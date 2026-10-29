@@ -63,6 +63,21 @@ from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI(title="GA Chat", version="0.1")
 
+from starlette.middleware.base import BaseHTTPMiddleware
+# 1029字体案2: 字体静态资源长缓存 —— StaticFiles默认无Cache-Control, iOS对无策略字体不落缓存
+# (/tmp/chatapp.log实锤: 手机每次会话全量重下同样23个子集, 全200几乎无304); iOS PWA挂起还会
+# 杀掉在途字体请求且恢复不重试 → 见面屏苹方/文楷永久混合. 字体文件按内容生成后不改动, 可immutable.
+# ⚠若将来重生成字体: 注入处加 ?v=N 破缓存, 或提示用户清PWA网站数据.
+class _FontCacheHeaders(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        resp = await call_next(request)
+        p = request.url.path
+        if p.startswith("/chat/"): p = p[len("/chat"):]
+        if (p == "/media/font" or p.startswith("/media/font/")) and resp.status_code == 200:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+app.add_middleware(_FontCacheHeaders)   # 先注册=内层(Strip剥前缀后此层见净路径, 兼容双写法)
+
 # tailscale serve /chat 前缀剥离: /chat/api/* -> /api/*, /chat/ -> /
 from starlette.middleware.base import BaseHTTPMiddleware
 class _StripChatPrefix(BaseHTTPMiddleware):
@@ -71,7 +86,7 @@ class _StripChatPrefix(BaseHTTPMiddleware):
         if p == "/chat" or p.startswith("/chat/"):
             request.scope["path"] = p[len("/chat"):] or "/"
         return await call_next(request)
-app.add_middleware(_StripChatPrefix)
+app.add_middleware(_StripChatPrefix)   # 后注册=最外层
 
 
 # ---------------- 数据库 ----------------

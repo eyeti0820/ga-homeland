@@ -446,6 +446,18 @@ const BASE=calcBase(location.pathname);
 /*BASE:END*/
 /* 字体css按BASE注入: ts.net反代(/chat)下根绝对/media会404打到论坛, 须带前缀(1029字体案) */
 ['regular','bold'].forEach(w=>{const l=document.createElement('link');l.rel='stylesheet';l.href=BASE+'/media/font/lxgwwenkai-'+w+'.css';document.head.appendChild(l)});
+/* 1029字体案2: 字体就绪门+恢复自愈 —— iOS PWA挂起会杀掉在途字体请求且恢复时不重试
+   (服务端日志实锤: 有会话0/23个子集到达), 导致见面屏苹方/文楷会话内永久混合.
+   openMeet入口等所需子集就绪再渲染(3.5s兜底放行, 晚到仍会swap补上); 恢复可见时自愈重拉. */
+let _mfOK=false;
+function ensureMeetFonts(){
+  if(_mfOK||!(document.fonts&&document.fonts.load))return Promise.resolve();
+  const S='夏以昼沈星回黎深秦彻祁煜落笔选场景意识同步开始结束回到隔屏聊天你我他她就是了的不在有个人这上中大为地';
+  const p=Promise.all(['400','600','700'].map(w=>document.fonts.load(w+' 16px "LXGW WenKai"',S))).then(()=>{_mfOK=true}).catch(()=>{});
+  return Promise.race([p,new Promise(r=>setTimeout(r,3500))]);
+}
+window.addEventListener('pageshow',e=>{if(e.persisted)ensureMeetFonts()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!_mfOK)ensureMeetFonts()});
 async function api(path,opt){
   const o=Object.assign({},opt||{});
   const headers=Object.assign({},o.headers||{});
@@ -853,6 +865,7 @@ function meetNovel(cid,msg,frag){   /* 切片10.1: user=整条胶带; assistant=
 }
 function meetScroll(){const a=$('meetArea');if(a)a.scrollTop=a.scrollHeight}
 async function openMeet(cid){
+  await ensureMeetFonts();   /* 1029字体案2: 等字体子集就绪再渲染见面屏, 防首屏苹方/文楷混合 */
   meetChar=cid;meetRendered=new Set();meetScene=CMAP[cid].scene||'';   /* 审计P2-6: 恢复最近场景(切片10:自由文本,未定=空串) */
   $('listScreen').style.display='none';$('chatScreen').style.display='none';
   const ms=$('meetScreen');ms.style.display='flex';ms.dataset.char=cid;

@@ -69,7 +69,8 @@ for ts, want in cases:
 
 print("== 4. _state_line 两态 ==")
 l = chatapp._state_line("qiyu", NOW)
-check("chat态", l == "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系]", repr(l))
+check("chat态", l.startswith("[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系") and l.endswith("]"),
+      repr(l))   # 切片12: 隔屏行尾部现拼作息时段(前缀断言兼容)
 chatapp._meta_set("meet_state:qiyu", json.dumps(
     {"mode": "meet", "scene": "书房", "since": NOW - 14 * 3600, "note": "她已睡着"}))
 l = chatapp._state_line("qiyu", NOW)

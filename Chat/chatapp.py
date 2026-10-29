@@ -107,6 +107,23 @@ MEDIA_HINTS = {c: (
     for c in CHARS}
 
 
+# ---------------- 切片12: 五角色作息表(读同目录schedule.py; 失败降级为无作息, 不影响服务) ----------------
+def _load_schedule():
+    import importlib.util as ilu
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.py")
+    spec = ilu.spec_from_file_location("chat_schedule", p)
+    mod = ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+try:
+    SCHEDULE = _load_schedule()
+    print(f"[chatapp] schedule loaded: {len(SCHEDULE.SCHEDULES)}角色作息", flush=True)
+except Exception as _e:
+    SCHEDULE = None
+    print(f"[chatapp] schedule加载失败(降级为无作息): {_e}", flush=True)
+
+
 def init_db():
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "in"), exist_ok=True)
@@ -191,6 +208,10 @@ class CharService:
                     threading.Thread(target=agent.run, daemon=True).start()
                     if MEDIA_HINTS.get(self.char):   # M3: per-char媒体命令修正(五角色共进程, 音色防串)
                         agent.extra_sys_prompts.append(MEDIA_HINTS[self.char])
+                    if SCHEDULE:   # 切片12: 作息overlay(人设尾部, Chat通道专属)
+                        _ov = SCHEDULE.overlay_text(self.char)
+                        if _ov:
+                            agent.extra_sys_prompts.append(_ov)
                     self.agent = agent
                     _apply_worldbook(agent)   # 竞态自愈: 构建期间若世界书被热更, 落成时再校一次
                     print(f"[chatapp] {self.char}: agent ready", flush=True)
@@ -844,14 +865,24 @@ def _state_line(char, now=None):
             parts.append(f"备注:{note}")
         parts.append("历史旧状态行一律作废,以本行为准")   # 审计P2-9: trim淘汰旧态行后兜底
         return "[状态: " + " · ".join(parts) + "]"
-    return "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系]"
+    base = "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系"
+    if SCHEDULE:   # 切片12: 拼当前时刻+时段活动(每轮现拼, trim裁不掉; 睡着时提示被吵醒按人设反应)
+        _extra = SCHEDULE.state_extra(char, now=now)
+        if _extra:
+            base += " · " + _extra
+    return base + "]"
 
 
 def _proactive_gates(char, now):
     """门检: 8-23点 + 有真实用户史 + 双3h静默门(用户/上次主动取较新) + 不忙; 返回(ok, 原因)"""
-    h = time.localtime(now).tm_hour
+    lt = time.localtime(now)
+    h = lt.tm_hour
     if not (PROACTIVE_HOUR_START <= h < PROACTIVE_HOUR_END):
         return False, f"hour={h}非活跃时段"
+    if SCHEDULE:   # 切片12: per-char作息窗(沈星回11:00后/秦彻17:10后; 仅缩窗不开窗, 上限仍卡全局23点)
+        w = SCHEDULE.proactive_window(char)
+        if w and not (w[0] <= lt.tm_hour * 60 + lt.tm_min < w[1]):
+            return False, f"hour={h}非{char}作息活跃段"
     with db() as conn:
         r = conn.execute("SELECT MAX(ts) AS mx, COUNT(*) AS n FROM messages "
                          "WHERE char_id=? AND role='user'", (char,)).fetchone()

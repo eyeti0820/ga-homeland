@@ -107,7 +107,7 @@ html.keyboard-open #inputBar{padding-bottom:8px}
   align-items:center;justify-content:center}
 #imgOverlay img{max-width:96vw;max-height:96vh}
 #msgInput{flex:1;border:none;border-radius:6px;background:#fff;padding:9px 10px;font-size:15.5px;
-  line-height:1.4;resize:none;outline:none;max-height:96px;font-family:inherit}
+  line-height:1.4;outline:none;max-height:96px;font-family:inherit;white-space:pre-wrap;word-break:break-word;overflow-y:auto;min-height:1.4em}
 #sendBtn{flex:none;border:none;border-radius:6px;background:#07c160;color:#fff;font-size:15px;
   padding:9px 16px;cursor:pointer}
 #sendBtn:disabled{background:#9fd6b5}
@@ -117,7 +117,8 @@ html.keyboard-open #inputBar{padding-bottom:8px}
 .screen-header{position:relative}
 #wbScreen{position:fixed;inset:0;background:#fff;display:none;flex-direction:column;z-index:50}
 #wbText{flex:1;margin:12px;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px;
-  line-height:1.6;resize:none;font-family:inherit;outline:none}
+  line-height:1.6;font-family:inherit;outline:none;white-space:pre-wrap;word-break:break-word;overflow-y:auto;min-height:3em}
+#wbText:empty::before{content:'五角色共享的世界设定, 保存后下一轮回复生效';color:#b8b8b8;pointer-events:none}
 #wbBar{display:flex;gap:10px;padding:0 12px 14px}
 #wbBar button{flex:1;border:none;border-radius:6px;padding:11px 0;font-size:16px}
 #wbCancel{background:#f2f2f2;color:#111}
@@ -228,7 +229,7 @@ html.keyboard-open #inputBar{padding-bottom:8px}
   box-shadow:0 -2px 10px rgba(0,0,0,.22)}
 #meetScreen[data-char="qinche"] #meetBar{background:rgba(18,13,11,.92)}
 #meetInput{flex:1;background:rgba(255,252,245,.96);border:1px solid var(--m-ac);border-radius:8px;
-  color:var(--m-ink);font-family:inherit;font-size:15px;line-height:1.5;padding:8px 10px;resize:none;max-height:120px;outline:none}
+  color:var(--m-ink);font-family:inherit;font-size:15px;line-height:1.5;padding:8px 10px;max-height:120px;outline:none;white-space:pre-wrap;word-break:break-word;overflow-y:auto;min-height:1.5em}
 #meetSendBtn{background:var(--m-ac);color:#fff;border:none;border-radius:8px;font-family:inherit;
   font-size:15px;letter-spacing:3px;padding:9px 16px;cursor:pointer;box-shadow:2px 2px 0 rgba(0,0,0,.2)}
 #meetSendBtn:disabled{opacity:.5}
@@ -285,7 +286,7 @@ html.keyboard-open #inputBar{padding-bottom:8px}
       </div>
     </div>
     <div id="meetBar">
-      <textarea id="meetInput" rows="1" autocomplete="off" oninput="autoGrow(this)" onkeydown="meetKey(event)"></textarea>
+      <div id="meetInput" contenteditable="plaintext-only" oninput="autoGrow(this)" onkeydown="meetKey(event)"></div>
       <button id="meetSendBtn" onclick="meetSend()">落笔</button>
     </div>
   </div>
@@ -306,7 +307,7 @@ html.keyboard-open #inputBar{padding-bottom:8px}
     <div id="attBar"></div>
     <div id="inputBar">
       <div id="plusBtn" onclick="pickImg()" title="发图片">＋</div>
-      <textarea id="msgInput" rows="1" autocomplete="off" oninput="autoGrow(this)" onkeydown="inputKey(event)"></textarea>
+      <div id="msgInput" contenteditable="plaintext-only" oninput="autoGrow(this)" onkeydown="inputKey(event)"></div>
       <button id="sendBtn" onclick="sendMsg()">发送</button>
     </div>
     <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="onPicked(this)">
@@ -333,7 +334,7 @@ html.keyboard-open #inputBar{padding-bottom:8px}
 </div>
 <div id="wbScreen">
   <div class="screen-header"><span onclick="closeWb()" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:26px;cursor:pointer;line-height:1">‹</span>共享世界书</div>
-  <textarea id="wbText" autocomplete="off" placeholder="五角色共享的世界设定, 保存后下一轮回复生效"></textarea>
+  <div id="wbText" contenteditable="plaintext-only"></div>
   <div id="wbBar"><button id="wbCancel" onclick="closeWb()">取消</button>
   <button id="wbSave" onclick="saveWb()">保存</button></div>
 </div>
@@ -457,14 +458,14 @@ async function api(path,opt){
 
 /* ---------- M2 世界书(五角色共享一份) ---------- */
 async function openWb(){
-  try{const r=await api('/api/worldbook');$('wbText').value=r.worldbook||''}
+  try{const r=await api('/api/worldbook');$('wbText').innerText=r.worldbook||''}
   catch(e){toast('世界书加载失败');return}
   $('wbScreen').style.display='flex';
 }
 function closeWb(){$('wbScreen').style.display='none'}
 async function saveWb(){
   const btn=$('wbSave');btn.disabled=true;btn.textContent='保存中…';
-  try{await api('/api/worldbook',{method:'PUT',body:JSON.stringify({worldbook:$('wbText').value})});
+  try{await api('/api/worldbook',{method:'PUT',body:JSON.stringify({worldbook:$('wbText').innerText})});
       toast('已保存, 下一轮回复生效');closeWb()}
   catch(e){toast('保存失败: '+e.message)}
   finally{btn.disabled=false;btn.textContent='保存'}
@@ -771,7 +772,7 @@ async function onPicked(inp){
 function zoomImg(u){if(!u)return;$('imgBig').src=u;$('imgOverlay').style.display='flex'}
 async function sendMsg(){
   if(!activeChar||sending)return;
-  const el=$('msgInput'),text=el.value.trim();
+  const el=$('msgInput'),text=el.innerText.trim();
   const imgs=pending.slice();
   if(!text&&!imgs.length)return;
   sending=true;$('sendBtn').disabled=true;
@@ -783,7 +784,7 @@ async function sendMsg(){
     if(text)appendRow(activeChar,{seq:r.seq,role:'user',kind:'text',content:text,ts:ts},false);
     setReadSeq(activeChar,r.seq);
     pending=[];renderAtt();
-    el.value='';autoGrow(el);
+    el.innerHTML='';autoGrow(el);
     setTimeout(pollOnce,400);
   }catch(e){toast('发送失败: '+e.message)}
   sending=false;$('sendBtn').disabled=false;
@@ -970,13 +971,13 @@ async function meetPoll(){
 }
 async function meetSend(){
   if(!meetChar||sending)return;
-  const el=$('meetInput'),text=el.value.trim();if(!text)return;
+  const el=$('meetInput'),text=el.innerText.trim();if(!text)return;
   sending=true;$('meetSendBtn').disabled=true;
   try{
     const r=await api('/api/msg',{method:'POST',body:JSON.stringify({char_id:meetChar,text})});
     meetNovel(meetChar,{seq:r.seq,role:'user',kind:'text',content:text,ts:r.ts||Date.now()/1000,meta:null});
     meetSince[meetChar]=Math.max(meetSince[meetChar]||0,r.seq);
-    el.value='';autoGrow(el);meetScroll();setTimeout(meetPoll,400);
+    el.innerHTML='';autoGrow(el);meetScroll();setTimeout(meetPoll,400);
   }catch(e){toast('发送失败: '+e.message)}
   sending=false;$('meetSendBtn').disabled=false;
 }
@@ -1094,7 +1095,7 @@ refreshDigest();applyBg();fetchBgCfg();
   const root=document.documentElement,vv=window.visualViewport;
   if(!vv)return;
   let baseline=vv.height,keyboard=false,frame=0;
-  const editing=()=>document.activeElement && document.activeElement.matches('input:not([type=file]),textarea,[contenteditable=true]');
+  const editing=()=>document.activeElement && document.activeElement.matches('input:not([type=file]),textarea,[contenteditable]');
   function sync(){
     frame=0;
     // A pinch zoom or the normal PWA status bar difference is not a keyboard.

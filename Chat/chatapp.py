@@ -1270,6 +1270,7 @@ async def upload_image(request: Request):
         raw = await f.read()
     except Exception:
         return _err(400, "请求体须为multipart/form-data")
+    _t0 = time.time()   # 切片13: 上传耗时观测
     char = str(form.get("char_id") or "").strip()
     if char not in CHARS:
         return _err(400, f"char_id须为: {','.join(CHARS)}")
@@ -1310,6 +1311,7 @@ async def upload_image(request: Request):
         url = f"/media/in/{name}"
         return _insert_msg(char, "user", "image_in", "[图片]", media_path=url), url
     seq, url = await asyncio.to_thread(_store_img)
+    print(f"[upload] {char} seq={seq} {len(raw)}B {time.time()-_t0:.2f}s {ext}", flush=True)
     return {"seq": seq, "media_path": url}
 
 

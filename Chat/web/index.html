@@ -771,14 +771,50 @@ async function dropAtt(i){
   if(p&&p.seq&&activeChar){try{await api('/api/att_del',{method:'POST',body:JSON.stringify({char_id:activeChar,seq:p.seq})})}catch(e){}}   /* P0-1: 服务端同步撤回 */
 }
 function pickImg(){$('fileInput').value='';$('fileInput').click()}
+/* 切片13: 聊天发图加固 —— ①Canvas压到最长边1920(webp .85)缩传输窗口 ②iOS PWA挂起杀在途fetch报Load failed, 自动重试1次(1029字体案同病根) */
+function compressImg(f){
+  return new Promise(res=>{
+    if(f.type==='image/gif'){res([f,f.name]);return}   /* GIF压缩丢动画, 直传原文件 */
+    try{
+      const reader=new FileReader();
+      reader.onload=e=>{
+        const img=new Image();
+        img.onload=()=>{
+          try{
+            let w=img.width,h=img.height;const MAX=1920;
+            if(w>MAX||h>MAX){if(w>h){h=Math.round(h*MAX/w);w=MAX}else{w=Math.round(w*MAX/h);h=MAX}}
+            const c=document.createElement('canvas');c.width=w;c.height=h;
+            c.getContext('2d').drawImage(img,0,0,w,h);
+            c.toBlob(b=>{
+              if(b&&b.size<f.size){const dot=f.name.lastIndexOf('.');res([b,(dot>0?f.name.slice(0,dot):f.name)+'.webp'])}
+              else res([f,f.name]);
+            },'image/webp',0.85);
+          }catch(err){res([f,f.name])}
+        };
+        img.onerror=()=>res([f,f.name]);
+        img.src=e.target.result;
+      };
+      reader.onerror=()=>res([f,f.name]);
+      reader.readAsDataURL(f);
+    }catch(err){res([f,f.name])}
+  });
+}
+async function uploadImg(f){
+  const [blob,name]=await compressImg(f);
+  for(let i=0;i<2;i++){   /* 首传失败自动重试1次, 两败才toast */
+    const fd=new FormData();fd.append('char_id',activeChar);fd.append('file',blob,name);
+    try{return await api('/api/upload',{method:'POST',body:fd,headers:{}})}
+    catch(e){if(i){toast('上传失败: '+e.message);return null}}
+  }
+  return null;
+}
 async function onPicked(inp){
   if(!activeChar)return;
   for(const f of inp.files){
     if(pending.length>=3){toast('一次最多带3张图');break}   /* P1-2: 前端先限3, 服务端硬限4 */
     if(!f.type.startsWith('image/')){toast('仅支持图片');continue}
-    const fd=new FormData();fd.append('char_id',activeChar);fd.append('file',f,f.name);
-    try{const r=await api('/api/upload',{method:'POST',body:fd,headers:{}});pending.push(r);renderAtt()}
-    catch(e){toast('上传失败: '+e.message)}
+    const r=await uploadImg(f);
+    if(r){pending.push(r);renderAtt()}
   }
 }
 function zoomImg(u){if(!u)return;$('imgBig').src=u;$('imgOverlay').style.display='flex'}

@@ -110,7 +110,7 @@ VOICE_DIR = os.path.join(MEDIA_DIR, "voice")   # opus→m4a语音条(前端audio
 OUT_DIR = os.path.join(MEDIA_DIR, "out")       # 发图从char_media_out搬运入库(/media静态挂载)
 CM_OUT_DIR = os.path.join(GA_ROOT, "temp", "char_media_out")   # char_media产物绝对路径(bash工具cwd=GA_ROOT/temp)
 GEN_LOG = os.path.join(CM_OUT_DIR, "gen_log.jsonl")            # char_media逐条追加{ts,char,path,desc}
-VISION_CFG = (os.environ.get("CHAT_VISION_CFG") or "native_oai_config10").strip()  # fsapp同款GLM-4V识图
+VISION_CFG = (os.environ.get("CHAT_VISION_CFG") or "").strip()  # 1029: 默认空=原生直读(本地模型自带vision); 显式设config名=回落GLM转述备胎
 _CLONE_CHARS = ("xiazhou", "shenxinghui", "qinche", "lishen")   # 有云端克隆音色; 1028黎深档案上线; 祁煜tts会报错(正常)
 MEDIA_HINTS = {c: (
     f"[媒体工具修正·{CHAR_NAMES[c]}专属] 本聊天服务五个角色同住一个进程, 你调用 char_media.py 的"
@@ -562,6 +562,41 @@ def _describe_job_images(char, job):
     return out
 
 
+def _job_image_paths(char, job):
+    """1029原生直读: job.img_seqs→图片文件绝对路径列表(不再GLM转述); 顺手写meta.vision标记供前端徽标"""
+    seqs = [int(x) for x in str(job["img_seqs"] or "").split(",") if x.strip().isdigit()]
+    out = []
+    if not seqs:
+        return out
+    with db() as conn:
+        q = ",".join("?" * len(seqs))
+        rows = conn.execute(
+            "SELECT * FROM messages WHERE seq IN (%s) AND char_id=? AND role='user' "
+            "AND kind='image_in'" % q, seqs + [char]).fetchall()
+    for r in rows:
+        fp = _media_fp(r["media_path"])
+        if not os.path.isfile(fp):
+            print(f"[chatapp] {char}: image_in缺文件 {fp}", flush=True)
+            continue
+        out.append(fp)
+        try:   # P2-7同款: 只更新vision键
+            with db() as conn:
+                old = conn.execute("SELECT meta FROM messages WHERE seq=?",
+                                   (r["seq"],)).fetchone()
+                try:
+                    meta = json.loads(old["meta"]) if old and old["meta"] else {}
+                except Exception:
+                    meta = {}
+                if not isinstance(meta, dict):
+                    meta = {}
+                meta["vision"] = "(原生直读)"
+                conn.execute("UPDATE messages SET meta=? WHERE seq=?",
+                             (json.dumps(meta, ensure_ascii=False), r["seq"]))
+        except Exception:
+            pass
+    return out
+
+
 def _opus_to_m4a(opus_path):
     """opus→m4a(aac64k, afconvert实测rc0)存VOICE_DIR; afinfo读时长; 失败(None, None)"""
     try:
@@ -694,13 +729,21 @@ async def _process_job(job):
     task_text = (f"{mem}\n\n---\n[以上为记忆回响, 以下是用户本轮消息]\n{user_text}" if mem
                  else user_text)
 
-    # M3识图: job挂的image_in行→GLM-4V转述注入本轮prompt(失败fail-open)
-    img_parts = await asyncio.to_thread(_describe_job_images, char, job)
-    if img_parts:
-        task_text += "\n\n" + "\n\n".join(img_parts)
+    # M3识图(1029升级): 默认原生直读——图文件直接交agent(agentmain白名单模型自己看图, 免GLM往返);
+    # 显式设CHAT_VISION_CFG时回落GLM-4V转述(老链路保留当备胎)
+    img_paths = None
+    if VISION_CFG and str(job["img_seqs"] or "").strip():
+        img_parts = await asyncio.to_thread(_describe_job_images, char, job)
+        if img_parts:
+            task_text += "\n\n" + "\n\n".join(img_parts)
+    else:
+        img_paths = await asyncio.to_thread(_job_image_paths, char, job) or None
+        if img_paths:
+            task_text += f"\n\n[用户发图×{len(img_paths)}, 图片已附在本条消息中]"
 
     # 切片8§3.3: 任务头每轮注入mode状态行(meet/chat两态现读); history旧状态行随trim自然淘汰
-    dq = agent.put_task(f"{_state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)
+    dq = agent.put_task(f"{_state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE,
+                        images=img_paths)
     start, raw = time.time(), None
     while True:
         try:
@@ -753,9 +796,10 @@ async def _process_job(job):
     except Exception as e:
         print(f"[chatapp] {char}: 媒体行产出失败: {e}", flush=True)
     if final or mnote:
+        _ut = (f"{user_text}\n[用户发图×{len(img_paths)}]").strip() if img_paths else user_text  # 1029: 宫殿注记原生直读
         try:
             await asyncio.to_thread(
-                svc.ctx.ingest, SERVICE_SOURCE, user_text,
+                svc.ctx.ingest, SERVICE_SOURCE, _ut,
                 (final + (f"\n{mnote}" if mnote else "")) or mnote)
         except Exception as e:
             print(f"[chatapp] {char}: ingest failed: {e}", flush=True)

@@ -39,3 +39,9 @@ next_session_handoff_prompt.md
 
 # 发圈种子已用状态(运行时,勿提交)
 seeds/moments_seeds_used.json
+
+# 1029: 开发bak与SQLite运行时文件不入库
+*.bak*
+temp/
+server/*.db-shm
+server/*.db-wal

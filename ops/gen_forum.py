@@ -358,8 +358,8 @@ def run_cross(base, args):
         r = post_thread(base, bkey, mid, payload, aid)
         print(f"[OK] {b['name']} 《{payload['title']}》 by {mask_name}(马甲:{cn}) -> thread {r['id']}")
         from homeland_ingest import homeland_ingest
-        homeland_ingest(char_config, "forum_thread", "论坛马甲起楼",
-                        f"用马甲「{mask_name}」在《{b['name']}》板块发了帖《{payload['title']}》", payload["content"])
+# [1030主人拍板:论坛/故事不入宫殿]         homeland_ingest(char_config, "forum_thread", "论坛马甲起楼",
+# [1030主人拍板:论坛/故事不入宫殿]                         f"用马甲「{mask_name}」在《{b['name']}》板块发了帖《{payload['title']}》", payload["content"])
         return 1
 
     items = recent_threads(base)
@@ -398,8 +398,8 @@ def run_cross(base, args):
     post_floor(base, tid, mid, payload, aid)
     print(f"[OK] thread {tid} +1楼 by {mask_name}(马甲:{cn})：{payload['content'][:40]}...")
     from homeland_ingest import homeland_ingest
-    homeland_ingest(char_config, "forum_floor", "论坛马甲回帖",
-                    f"用马甲「{mask_name}」在《{th.get('title', '?')}》帖下回了楼", payload["content"])
+# [1030主人拍板:论坛/故事不入宫殿]     homeland_ingest(char_config, "forum_floor", "论坛马甲回帖",
+# [1030主人拍板:论坛/故事不入宫殿]                     f"用马甲「{mask_name}」在《{th.get('title', '?')}》帖下回了楼", payload["content"])
     return 1
 
 

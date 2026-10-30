@@ -210,9 +210,10 @@ def write_chapter(story, args, char_cn, sess, char_config, persona, llmcore, ses
         api(args.api, "PATCH", f"/api/stories/{sid}/chapters/{n['id']}", {"consumed": 1})
 
     try:
-        homeland_ingest(char_config, f"story_if_{sid}", "我们的故事",
-                        f"【IF线·{story['title']}】第{idx}章《{title}》（{char_cn}执笔）：{summary}",
-                        content)
+        pass  # [1030主人拍板:故事IF线不入记忆宫殿] 下方原homeland_ingest(story_if)调用已摘,备份见.bak_1030_noingest
+# [1030主人拍板:论坛/故事不入宫殿]         homeland_ingest(char_config, f"story_if_{sid}", "我们的故事",
+# [1030主人拍板:论坛/故事不入宫殿]                         f"【IF线·{story['title']}】第{idx}章《{title}》（{char_cn}执笔）：{summary}",
+# [1030主人拍板:论坛/故事不入宫殿]                         content)
     except Exception as e:
         print(f"[MP] 家园入库失败(story_if_{sid}): {e}")
 

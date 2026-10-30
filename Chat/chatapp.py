@@ -1065,12 +1065,45 @@ async def _proactive_once(char):
         raise RuntimeError("proactive 产出为空")
     await asyncio.to_thread(_insert_msg, char, "assistant", "text", final, None,
                             {"proactive": True, "mode": _mode_of(char)})   # 切片8: mode随行(切片9横幅用); 审计P1-2: 完成时现读, 弃生成前旧值
+    _wxpush_doorbell(char)   # 1030-TE4: 主动消息门铃(纯门铃不带正文; 仅此一处调用, 会话回复不响)
     try:   # 对齐fsapp B1: 主动消息同样入宫殿账本, 触发侧记为系统触发
         await asyncio.to_thread(svc.ctx.ingest, SERVICE_SOURCE,
                                 "[主动消息·系统触发]", final)
     except Exception as e:
         print(f"[chatapp] {char}: proactive ingest failed: {e}", flush=True)
     return final
+
+
+# ── 1030-TE4: 主动消息门铃 (WxPusher iOS原生推送) ────────────────────────────
+# 纯门铃: 只报角色名不带正文(消息内容不过第三方云); 仅主动消息触发, 会话回复不推(防刷屏)。
+# fire-and-forget: 守护线程POST 5s超时, 失败仅记日志, 绝不影响聊天链路。
+# 配置走plist env不进git: GA_WXPUSH_SPT(极简推送令牌) / GA_WXPUSH_URL(点通知直达chat, iOS开Safari)
+WXPUSH_SPT = os.environ.get("GA_WXPUSH_SPT", "").strip()
+WXPUSH_URL = os.environ.get("GA_WXPUSH_URL", "").strip()
+
+def _wxpush_doorbell(char):
+    if not WXPUSH_SPT:
+        return
+    name = CHAR_NAMES.get(char, char)   # 通知按角色实名, 不会串名
+    def _run():
+        try:
+            import urllib.request
+            payload = {"spt": WXPUSH_SPT,
+                       "content": f"🔔 {name}给你发了一条消息",
+                       "summary": f"{name} · 主动消息", "contentType": 1}
+            if WXPUSH_URL:
+                payload["url"] = WXPUSH_URL
+            req = urllib.request.Request(
+                "https://wxpusher.zjiecode.com/api/send/message/simple-push",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5.0) as r:
+                body = json.loads(r.read().decode("utf-8", "replace"))
+            print(f"[chatapp] wxpush doorbell {name}: code={body.get('code')} "
+                  f"msg={str(body.get('msg'))[:40]}", flush=True)
+        except Exception as e:
+            print(f"[chatapp] wxpush doorbell {name} failed: {e}", flush=True)
+    threading.Thread(target=_run, daemon=True).start()
 
 
 async def _proactive_loop():

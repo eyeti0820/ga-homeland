@@ -186,6 +186,7 @@ html.keyboard-open #inputBar{padding-bottom:8px}
 .m-band::before,.m-band::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--m-bandc));opacity:.55}
 .m-band::after{background:linear-gradient(90deg,var(--m-bandc),transparent)}
 .m-msg{margin:16px 0;animation:mIn .28s ease both}
+.m-msg.u + .m-msg.a,.m-msg.a + .m-msg.u{margin-top:30px}   /* 1030: 角色卡与用户胶带上下间距加宽(坍缩后16→30px) */
 @keyframes mIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .m-name{font-size:12.5px;color:#7a6748;font-weight:700;letter-spacing:2px;margin:0 0 6px 2px}
 .m-msg.u{text-align:right}

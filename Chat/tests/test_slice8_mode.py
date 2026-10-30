@@ -4,7 +4,8 @@
 
 跑法: python3 tests/test_slice8_mode.py  (cwd=Chat/)
 覆盖: _MODE_RE校验 / _get_meet_state坏值自愈 / _fmt_since跨天边界 / _state_line两态 /
-      mode_post全校验+meet再入保since+退出删KV / _digest带mode / mode_get单查全量
+      mode_post全校验+meet再入保since+退出存chat态+ended_at(1030-TE) / _digest带mode /
+      mode_get单查全量 / _state_line退出窗口"同步已结束"注入(1030-TE)
 """
 import asyncio, json, os, sys, sqlite3, tempfile, time
 
@@ -116,7 +117,13 @@ check("再入meet保since", since2 == since1, f"{since1} vs {since2}")
 check("换场景生效", json.loads(chatapp._meta_get("meet_state:shenxinghui"))["scene"] == "客厅")
 r3, sc3 = post_mode({"char_id": "shenxinghui", "mode": "chat"})
 check("退chat返回200", sc3 == 200)
-check("退出删KV", chatapp._meta_get("meet_state:shenxinghui") is None)
+kv3 = json.loads(chatapp._meta_get("meet_state:shenxinghui") or "null")   # 1030-TE: 退出不再删KV
+check("退出存chat态", bool(kv3) and kv3.get("mode") == "chat", str(kv3))
+check("退出stamp ended_at", kv3.get("ended_at", 0) > 0, str(kv3))
+check("退出清scene", kv3.get("scene") == "", str(kv3))
+post_mode({"char_id": "shenxinghui", "mode": "chat"})   # 纯chat切换不应覆盖旧stamp
+kv3c = json.loads(chatapp._meta_get("meet_state:shenxinghui") or "null")
+check("纯chat切换不覆盖ended_at", kv3c.get("ended_at") == kv3.get("ended_at"), str(kv3c))
 with chatapp.db() as conn:
     row = conn.execute("SELECT content FROM messages WHERE char_id='shenxinghui' "
                        "AND kind='system' ORDER BY seq DESC LIMIT 1").fetchone()
@@ -134,6 +141,23 @@ check("mode_get单查", g["mode"] == "meet" and g["scene"] == "医院走廊", st
 check("mode_get坏char", chatapp.mode_get(char_id="nobody").status_code == 400)
 allm = chatapp.mode_get()
 check("mode_get全量", allm["chars"]["lishen"] == "meet" and allm["chars"]["xiazhou"] == "chat", str(allm))
+
+print("== 8. 1030-TE: 退出meet后状态行注入'同步已结束'(6h窗口) ==")
+now = time.time()
+chatapp._meta_set("meet_state:shenxinghui", json.dumps(
+    {"mode": "chat", "scene": "", "since": 0.0, "note": "", "ended_at": now - 1800}))
+l1 = chatapp._state_line("shenxinghui")
+check("窗口内:同步已结束", "意识同步已于" in l1 and "不要用括号" in l1, l1)
+check("窗口内:作废句", "历史旧状态行一律作废" in l1, l1)
+chatapp._meta_set("meet_state:shenxinghui", json.dumps(
+    {"mode": "chat", "scene": "", "since": 0.0, "note": "", "ended_at": now - 7 * 3600}))
+check("窗口外:回基础行", "隔屏聊天" in chatapp._state_line("shenxinghui")
+      and "意识同步已于" not in chatapp._state_line("shenxinghui"), "")
+chatapp._meta_set("meet_state:shenxinghui", json.dumps(
+    {"mode": "chat", "scene": "", "since": 0.0, "note": "", "ended_at": "bad"}))
+check("坏ended_at自愈回基础行", "隔屏聊天" in chatapp._state_line("shenxinghui"), "")
+with chatapp.db() as conn:   # 残留清零(1029教训): 测试KV全清防污染生产状态行
+    conn.execute("DELETE FROM meta WHERE key LIKE 'meet_state:%'")
 
 print(f"\n{'='*40}\nPASS={PASS} FAIL={FAIL}")
 sys.exit(1 if FAIL else 0)

@@ -838,10 +838,12 @@ def _meet_key(char):
 
 
 def _get_meet_state(char):
-    """读mode态; 无记录/坏值自愈为chat缺省(§3.1)。返回 {"mode":"chat"} 或meet记录本体。"""
+    """读mode态; 无记录/坏值自愈为chat缺省(§3.1)。
+    返回meet记录本体 / chat记录本体(1030-TE: 退出meet改存chat态+ended_at, 供状态行注入
+    "同步已结束"指令) / 无记录时{"mode":"chat"}缺省。"""
     try:
         st = json.loads(_meta_get(_meet_key(char)) or "")
-        if isinstance(st, dict) and st.get("mode") == "meet":
+        if isinstance(st, dict) and st.get("mode") in ("chat", "meet"):
             return st
     except Exception:
         pass
@@ -884,8 +886,8 @@ def _all_modes():
     return out
 
 
-def _fmt_since(ts, now=None):
-    """since时间戳→'始于昨晚23:05·已持续3小时'式自然语(§3.3状态行用)"""
+def _fmt_when(ts, now=None):
+    """时间戳→'今天09:46/昨晚23:05/昨天14:00/前天08:10/10-27 09:46'式相对日(_fmt_since/1030-TE共用)"""
     now = now or time.time()
     lt, ln = time.localtime(ts), time.localtime(now)
     hhmm = time.strftime("%H:%M", lt)
@@ -893,14 +895,18 @@ def _fmt_since(ts, now=None):
     d1 = datetime.date(lt.tm_year, lt.tm_mon, lt.tm_mday)
     n = (d0 - d1).days
     if n <= 0:
-        when = f"今天{hhmm}"
-    elif n == 1:
-        when = f"{'昨晚' if lt.tm_hour >= 18 or lt.tm_hour < 6 else '昨天'}{hhmm}"
-    elif n == 2:
-        when = f"前天{hhmm}"
-    else:
-        when = time.strftime("%m-%d %H:%M", lt)
-    dur = max(0.0, now - ts)
+        return f"今天{hhmm}"
+    if n == 1:
+        return f"{'昨晚' if lt.tm_hour >= 18 or lt.tm_hour < 6 else '昨天'}{hhmm}"
+    if n == 2:
+        return f"前天{hhmm}"
+    return time.strftime("%m-%d %H:%M", lt)
+
+
+def _fmt_since(ts, now=None):
+    """since时间戳→'始于昨晚23:05·已持续3小时'式自然语(§3.3状态行用)"""
+    when = _fmt_when(ts, now)
+    dur = max(0.0, (now or time.time()) - ts)
     durs = (f"已持续{int(dur // 3600)}小时" if dur >= 3600
             else (f"已持续{int(dur // 60)}分钟" if dur >= 60 else "刚开始"))
     return f"始于{when}·{durs}"
@@ -945,12 +951,25 @@ def _state_line(char, now=None):
             parts.append(f"备注:{note}")
         parts.append("历史旧状态行一律作废,以本行为准")   # 审计P2-9: trim淘汰旧态行后兜底
         return "[状态: " + " · ".join(parts) + "]"
-    base = "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系"
+    # 1030-TE(seq449实证): ①基础行常驻"纯文字对白"指令(persona私聊纯对白双保险)
+    # ②退出meet后6h窗口内换"同步已结束"事件头(对齐persona【意识同步结束】约定,
+    #   防沿用括号写法/怪她没告别); ③对齐meet态审计P2-9作废句
+    now = now or time.time()
+    try:
+        ended = float(st.get("ended_at") or 0)
+    except (TypeError, ValueError):
+        ended = 0.0
+    if ended > 0 and now - ended <= 6 * 3600:
+        head = (f"意识同步已于{_fmt_when(ended, now)}结束, 她的意识已回到现实身体, "
+                "你们现在是隔屏聊天 · 纯文字对白, 不要用括号写动作心理场景")
+    else:
+        head = "隔屏聊天 · 你们不在同一空间, 通过手机联系 · 纯文字对白, 不要用括号写动作心理场景"
+    base = "[状态: " + head
     if SCHEDULE:   # 切片12: 拼当前时刻+时段活动(每轮现拼, trim裁不掉; 睡着时提示被吵醒按人设反应)
         _extra = SCHEDULE.state_extra(char, now=now)
         if _extra:
             base += " · " + _extra
-    return base + "]"
+    return base + " · 历史旧状态行一律作废,以本行为准]"
 
 
 def _proactive_gates(char, now):
@@ -1003,7 +1022,7 @@ async def _proactive_once(char):
         mem = ""
     task_text = (f"{mem}\n\n---\n[以上为记忆回响, 以下是本轮任务]\n{trigger}" if mem
                  else trigger)
-    dq = agent.put_task(f"{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)
+    dq = agent.put_task(f"{_state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)   # 1030-TE: 主动消息对齐_process_job每轮注状态行(新退出态带"同步已结束"防括号残留)
     start, raw = time.time(), None
     while True:
         try:
@@ -1235,11 +1254,15 @@ async def mode_post(request: Request):
         await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))   # 审计P2-2: 阻塞写挪出事件循环
         line = f"—— 意识同步开始 · 场景:{scene or '未定'} ——"
     else:
-        def _del_meet():   # 审计P2-2: 阻塞写挪出事件循环
-            with db() as conn:   # 退出即删记录: 无记录=chat缺省(§3.1), 不留脏KV
-                conn.execute("DELETE FROM meta WHERE key=?", (_meet_key(char),))
-        await asyncio.to_thread(_del_meet)
-        st = {"mode": "chat", "scene": "", "since": 0.0, "note": ""}
+        # 1030-TE: 退出不再删KV, 改存chat态记录+ended_at(状态行6h窗口内注入"同步已结束"
+        # 指令, seq449实证防括号残留); scene清空防_all_scenes/openMeet误恢复; 纯chat切换不误stamp
+        try:
+            prev_ended = float(prev.get("ended_at") or 0)
+        except (TypeError, ValueError):
+            prev_ended = 0.0
+        st = {"mode": "chat", "scene": "", "since": 0.0, "note": "",
+              "ended_at": ts if prev.get("mode") == "meet" else prev_ended}
+        await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))
         line = "—— 意识同步结束，回到隔屏聊天 ——"
     seq = 0
     if not quiet:   # 1028-LB: quiet模式横幅延后到首条消息时补(见post_msg惰性横幅)

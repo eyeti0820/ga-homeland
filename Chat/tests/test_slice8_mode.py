@@ -5,7 +5,7 @@
 跑法: python3 tests/test_slice8_mode.py  (cwd=Chat/)
 覆盖: _MODE_RE校验 / _get_meet_state坏值自愈 / _fmt_since跨天边界 / _state_line两态 /
       mode_post全校验+meet再入保since+退出存chat态+ended_at(1030-TE) / _digest带mode /
-      mode_get单查全量 / _state_line退出窗口"同步已结束"注入(1030-TE)
+      mode_get单查全量 / _state_line退出事件只注一次(noted翻位,1030-TE2) / 共享协议块(1030-TE2)
 """
 import asyncio, json, os, sys, sqlite3, tempfile, time
 
@@ -33,6 +33,9 @@ class FakeRequest:
 def post_mode(body):
     r = asyncio.run(chatapp.mode_post(FakeRequest(body)))
     return (r, r.status_code) if hasattr(r, "status_code") else (r, 200)
+
+def sl(char, now=None):   # 1030-TE2: _state_line改async(注入即翻位noted)
+    return asyncio.run(chatapp._state_line(char, now=now))
 
 print("== 1. _MODE_RE 校验(B4式正反样本) ==")
 for good in ("chat", "meet"):
@@ -69,16 +72,16 @@ for ts, want in cases:
     check(f"{want}", got == want, f"got={got!r}")
 
 print("== 4. _state_line 两态 ==")
-l = chatapp._state_line("qiyu", NOW)
+l = sl("qiyu", NOW)
 check("chat态", l.startswith("[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系") and l.endswith("]"),
       repr(l))   # 切片12: 隔屏行尾部现拼作息时段(前缀断言兼容)
 chatapp._meta_set("meet_state:qiyu", json.dumps(
     {"mode": "meet", "scene": "书房", "since": NOW - 14 * 3600, "note": "她已睡着"}))
-l = chatapp._state_line("qiyu", NOW)
+l = sl("qiyu", NOW)
 want = "[状态: 意识同步中(你们在同一空间, 面对面) · 场景:书房 · 始于今天01:00·已持续14小时 · 备注:她已睡着 · 历史旧状态行一律作废,以本行为准]"
 check("meet态全字段", l == want, repr(l))
 chatapp._meta_set("meet_state:qiyu", json.dumps({"mode": "meet"}))
-l = chatapp._state_line("qiyu", NOW)
+l = sl("qiyu", NOW)
 check("meet态裸记录", l == "[状态: 意识同步中(你们在同一空间, 面对面) · 历史旧状态行一律作废,以本行为准]", repr(l))
 
 print("== 5. mode_post 校验(全400路径) ==")
@@ -142,20 +145,33 @@ check("mode_get坏char", chatapp.mode_get(char_id="nobody").status_code == 400)
 allm = chatapp.mode_get()
 check("mode_get全量", allm["chars"]["lishen"] == "meet" and allm["chars"]["xiazhou"] == "chat", str(allm))
 
-print("== 8. 1030-TE: 退出meet后状态行注入'同步已结束'(6h窗口) ==")
+print("== 8. 1030-TE2: 退出meet后'同步已结束'只注一次(noted翻位) ==")
 now = time.time()
 chatapp._meta_set("meet_state:shenxinghui", json.dumps(
     {"mode": "chat", "scene": "", "since": 0.0, "note": "", "ended_at": now - 1800}))
-l1 = chatapp._state_line("shenxinghui")
-check("窗口内:同步已结束", "意识同步已于" in l1 and "不要用括号" in l1, l1)
-check("窗口内:作废句", "历史旧状态行一律作废" in l1, l1)
-chatapp._meta_set("meet_state:shenxinghui", json.dumps(
-    {"mode": "chat", "scene": "", "since": 0.0, "note": "", "ended_at": now - 7 * 3600}))
-check("窗口外:回基础行", "隔屏聊天" in chatapp._state_line("shenxinghui")
-      and "意识同步已于" not in chatapp._state_line("shenxinghui"), "")
+l1 = sl("shenxinghui")
+check("首次:同步已结束事件行", "意识同步已于" in l1 and "不要用括号" in l1
+      and "不要责怪她的离开" in l1, l1)
+check("首次:作废句", "历史旧状态行一律作废" in l1, l1)
+kv = chatapp._get_meet_state("shenxinghui")
+check("首次:KV已翻位noted且ended不丢", kv.get("noted") is True and kv.get("ended_at") == now - 1800, str(kv))
+l2 = sl("shenxinghui", now=now + 3600)
+check("第二次:回基础行不重复事件", l2.startswith("[状态: 隔屏聊天") and "意识同步已于" not in l2, l2)
+check("第二次:noted保持", chatapp._get_meet_state("shenxinghui").get("noted") is True, "")
 chatapp._meta_set("meet_state:shenxinghui", json.dumps(
     {"mode": "chat", "scene": "", "since": 0.0, "note": "", "ended_at": "bad"}))
-check("坏ended_at自愈回基础行", "隔屏聊天" in chatapp._state_line("shenxinghui"), "")
+check("坏ended_at自愈回基础行", "隔屏聊天" in sl("shenxinghui"), "")
+
+print("== 9. 1030-TE2: 意识同步协议上收共享块(_meet_format.md随load_persona注入) ==")
+from char_config import CharCtx
+_PDIR = os.path.join(chatapp.GA_ROOT, "assets", "personas")
+for _ch in ("xiazhou", "shenxinghui", "lishen", "qiyu", "qinche"):
+    _body = open(os.path.join(_PDIR, _ch + ".md"), encoding="utf-8").read()
+    check(f"{_ch}人设无共享行", "她发出" not in _body and "不用括号写动作/心理/场景描写" not in _body, "")
+_full = CharCtx("xiazhou").load_persona()
+check("load_persona拼通用协议", "意识同步·通用协议" in _full and "只能由她发起与结束" in _full, "")
+check("load_persona仍拼abilities", "通讯台" in _full, "")
+check("顺序:人设→abilities→通用协议", 0 < _full.index("通讯台") < _full.index("意识同步·通用协议"), "")
 with chatapp.db() as conn:   # 残留清零(1029教训): 测试KV全清防污染生产状态行
     conn.execute("DELETE FROM meta WHERE key LIKE 'meet_state:%'")
 

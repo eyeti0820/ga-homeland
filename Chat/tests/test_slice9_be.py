@@ -133,12 +133,31 @@ check("system行带mode标", m.get("mode") in ("chat", "meet"), str(m))
 
 print("== D7-6. P2-9: 状态行自带作废声明+坏state回退chat ==")
 chatapp._meta_set(chatapp._meet_key(C), json.dumps({"mode": "meet", "scene": "静室"}))
-line = chatapp._state_line(C)
+line = asyncio.run(chatapp._state_line(C))
 check("meet态状态行含作废声明", "作废" in line and "静室" in line, line)
 chatapp._meta_set(chatapp._meet_key(C), json.dumps({"scene": "只有场景没mode"}))
-check("无mode坏state→回退chat行", "隔屏聊天" in chatapp._state_line(C), "no fallback")
+check("无mode坏state→回退chat行", "隔屏聊天" in asyncio.run(chatapp._state_line(C)), "no fallback")
 with chatapp.db() as conn:
     conn.execute("DELETE FROM meta WHERE key=?", (chatapp._meet_key(C),))
+
+print("== D7-7. 1030-TE3: /api/history mode=chat 过滤+游标分页(与digest口径共用) ==")
+H = "shenxinghui"
+with chatapp.db() as conn:
+    conn.execute("DELETE FROM messages WHERE char_id=?", (H,))
+chatapp._insert_msg(H, "user", "text", "chat甲")
+chatapp._insert_msg(H, "assistant", "text", "meet乙", meta={"mode": "meet"})
+chatapp._insert_msg(H, "assistant", "text", "evt丙", meta={"mode_evt": "meet"})
+chatapp._insert_msg(H, "system", "system", "—— 意识同步开始 ——(琴房)")
+chatapp._insert_msg(H, "user", "text", "chat戊")
+hist = chatapp.history(char_id=H, before_seq=0, limit=50, mode="chat")
+conts = [m["content"] for m in hist["msgs"]]
+check("mode=chat只回chat行(meet/evt/横幅全滤)", conts == ["chat甲", "chat戊"], str(conts))
+check("mode=chat返回seq升序", hist["msgs"][0]["seq"] < hist["msgs"][-1]["seq"], "应升序")
+raw = [m["content"] for m in chatapp.history(char_id=H, before_seq=0, limit=50)["msgs"]]
+check("默认原始行含meet/evt/横幅", "meet乙" in raw and "evt丙" in raw and any("—— 意识同步开始" in c for c in raw), str(raw))
+seq_wu = hist["msgs"][-1]["seq"]
+page1 = [m["content"] for m in chatapp.history(char_id=H, before_seq=seq_wu, limit=1, mode="chat")["msgs"]]
+check("游标分页(before_seq分支)同样滤meet", page1 == ["chat甲"], str(page1))
 
 print("=" * 40)
 print(f"PASS={PASS} FAIL={FAIL}")

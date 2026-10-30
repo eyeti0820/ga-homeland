@@ -671,7 +671,7 @@ async function openChat(cid){
   }catch(e){}
 
   try{
-    const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=50`);
+    const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=50&mode=chat`);   /* 1030-TE3: 服务端滤meet行, 防见面长聊把聊天史挤出窗口→空屏 */
     if(r.msgs&&r.msgs.length){
       applyMsgs(cid,r.msgs,false);
       // 写入骨架秒开缓存(只留最新50条)
@@ -736,7 +736,7 @@ $('msgArea').addEventListener('scroll',async()=>{
     if(!before||before<=1)return;
     loadingHistory=true;pageTs=0;
     try{
-      const r=await api(`/api/history?char_id=${encodeURIComponent(activeChar)}&before_seq=${before}&limit=50`);
+      const r=await api(`/api/history?char_id=${encodeURIComponent(activeChar)}&before_seq=${before}&limit=50&mode=chat`);   /* 1030-TE3: 翻页同滤 */
       if(activeChar&&r.msgs&&r.msgs.length&&r.msgs[0].seq<before){   /* 防同窗重复返回死循环 */
         firstSeqInDom[activeChar]=r.msgs[0].seq;   /* 审计P1-1保留: firstSeq取原始首行(整页滤空仍可续翻) */
         const prevBottom=area.scrollHeight-area.scrollTop;   /* 视口底锚定 */

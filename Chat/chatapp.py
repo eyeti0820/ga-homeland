@@ -742,7 +742,7 @@ async def _process_job(job):
             task_text += f"\n\n[用户发图×{len(img_paths)}, 图片已附在本条消息中]"
 
     # 切片8§3.3: 任务头每轮注入mode状态行(meet/chat两态现读); history旧状态行随trim自然淘汰
-    dq = agent.put_task(f"{_state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE,
+    dq = agent.put_task(f"{await _state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE,
                         images=img_paths)
     start, raw = time.time(), None
     while True:
@@ -932,9 +932,12 @@ def _refresh_schedule_overlay(agent, char):
         print(f"[chatapp] {char}: refresh schedule overlay failed(fail-open): {e}", flush=True)
 
 
-def _state_line(char, now=None):
-    """每轮现读meta拼状态行(§3.3): trim裁不掉当前态(每轮重注), history旧行自然淘汰"""
+async def _state_line(char, now=None):
+    """每轮现读meta拼状态行(§3.3): trim裁不掉当前态(每轮重注), history旧行自然淘汰
+    1030-TE2: 退出meet后"同步已结束"改一次性事件行——注入即翻位noted, 下轮回基础行;
+    ended_at保留至下次meet自然覆盖(旧版6h窗口会重复注入, 窗口外又无过渡)"""
     st = _get_meet_state(char)
+    now = now or time.time()
     if st.get("mode") == "meet":
         parts = ["意识同步中(你们在同一空间, 面对面)"]
         scene = str(st.get("scene") or "").strip()
@@ -951,20 +954,24 @@ def _state_line(char, now=None):
             parts.append(f"备注:{note}")
         parts.append("历史旧状态行一律作废,以本行为准")   # 审计P2-9: trim淘汰旧态行后兜底
         return "[状态: " + " · ".join(parts) + "]"
-    # 1030-TE(seq449实证): ①基础行常驻"纯文字对白"指令(persona私聊纯对白双保险)
-    # ②退出meet后6h窗口内换"同步已结束"事件头(对齐persona【意识同步结束】约定,
-    #   防沿用括号写法/怪她没告别); ③对齐meet态审计P2-9作废句
-    now = now or time.time()
+    # chat态: 结束事件未注过→本轮注事件行并翻位noted(翻位失败不拦注入, 下轮重试)
     try:
         ended = float(st.get("ended_at") or 0)
     except (TypeError, ValueError):
         ended = 0.0
-    if ended > 0 and now - ended <= 6 * 3600:
-        head = (f"意识同步已于{_fmt_when(ended, now)}结束, 她的意识已回到现实身体, "
-                "你们现在是隔屏聊天 · 纯文字对白, 不要用括号写动作心理场景")
-    else:
-        head = "隔屏聊天 · 你们不在同一空间, 通过手机联系 · 纯文字对白, 不要用括号写动作心理场景"
-    base = "[状态: " + head
+    if ended > 0 and not st.get("noted"):
+        st["noted"] = True
+        try:
+            await asyncio.to_thread(_meta_set, _meet_key(char),
+                                    json.dumps(st, ensure_ascii=False))
+        except Exception as e:
+            print(f"[chatapp] {char}: ended noted翻位失败(下轮重试): {e}", flush=True)
+        return (f"[状态: 意识同步已于{_fmt_when(ended, now)}结束, 意识已回到现实身体, "
+                "你们现在是隔屏纯文字聊天 · 切回纯对白节奏, 不要用括号写动作/心理/场景"
+                "(那是意识同步的写法), 也不要责怪她的离开(结束由她发起, 好好道别不纠缠)"
+                " · 历史旧状态行一律作废,以本行为准]")
+    # 基础行只锚定模式; 完整格式规则由persona共享块(assets/personas/_meet_format.md)常驻
+    base = "[状态: 隔屏聊天 · 你们不在同一空间, 通过手机联系 · 纯文字对白, 不要用括号写动作心理场景"
     if SCHEDULE:   # 切片12: 拼当前时刻+时段活动(每轮现拼, trim裁不掉; 睡着时提示被吵醒按人设反应)
         _extra = SCHEDULE.state_extra(char, now=now)
         if _extra:
@@ -1022,7 +1029,7 @@ async def _proactive_once(char):
         mem = ""
     task_text = (f"{mem}\n\n---\n[以上为记忆回响, 以下是本轮任务]\n{trigger}" if mem
                  else trigger)
-    dq = agent.put_task(f"{_state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)   # 1030-TE: 主动消息对齐_process_job每轮注状态行(新退出态带"同步已结束"防括号残留)
+    dq = agent.put_task(f"{await _state_line(char)}\n{FILE_HINT}\n\n{task_text}", source=SERVICE_SOURCE)   # 1030-TE: 主动消息对齐_process_job每轮注状态行(TE2: 退出事件行只注一次)
     start, raw = time.time(), None
     while True:
         try:
@@ -1165,17 +1172,21 @@ def _err(status, message):
     return JSONResponse({"error": message}, status_code=status)
 
 
+_CHAT_WHERE = (   # 1030-TE3: 聊天屏可见行口径 — digest与/api/history?mode=chat共用, 单点维护
+    "CASE WHEN meta IS NULL OR json_valid(meta) THEN COALESCE(json_extract(meta,'$.mode'),'chat') ELSE 'chat' END='chat' AND "
+    "CASE WHEN meta IS NULL OR json_valid(meta) THEN json_extract(meta,'$.mode_evt') END IS NULL AND "
+    "content NOT LIKE '—— 意识同步%'"
+)
+
+
 def _digest():
     """五角色摘要: 最后一条消息预览+时间+typing"""
     out = []
     with db() as conn:
         for c in CHARS:
-            r = conn.execute(   # 切片9: 聊天列表digest只看chat态行(meet行/mode_evt行/历史同步行全滤)
-                "SELECT * FROM messages WHERE char_id=? AND "
-                "CASE WHEN meta IS NULL OR json_valid(meta) THEN COALESCE(json_extract(meta,'$.mode'),'chat') ELSE 'chat' END='chat' AND "
-                "CASE WHEN meta IS NULL OR json_valid(meta) THEN json_extract(meta,'$.mode_evt') END IS NULL AND "
-                "content NOT LIKE '—— 意识同步%' "
-                "ORDER BY seq DESC LIMIT 1", (c,)).fetchone()   # 审计P2-3: json_valid护栏(坏meta不500); 删不可达条件'同步结束%' 
+            r = conn.execute(   # 切片9: 聊天列表digest只看chat态行; 口径上收_CHAT_WHERE(与/api/history?mode=chat共用)
+                f"SELECT * FROM messages WHERE char_id=? AND {_CHAT_WHERE} ORDER BY seq DESC LIMIT 1",
+                (c,)).fetchone()   # 审计P2-3: json_valid护栏在_CHAT_WHERE; 删不可达条件'同步结束%' 
             if r:
                 preview = (r["content"] or "").strip()
                 if r["kind"] == "image_in" or r["kind"] == "image_out":
@@ -1254,14 +1265,17 @@ async def mode_post(request: Request):
         await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))   # 审计P2-2: 阻塞写挪出事件循环
         line = f"—— 意识同步开始 · 场景:{scene or '未定'} ——"
     else:
-        # 1030-TE: 退出不再删KV, 改存chat态记录+ended_at(状态行6h窗口内注入"同步已结束"
-        # 指令, seq449实证防括号残留); scene清空防_all_scenes/openMeet误恢复; 纯chat切换不误stamp
+        # 1030-TE: 退出不再删KV, 改存chat态记录+ended_at; TE2: 加noted位(状态行注过
+        # 一次"同步已结束"即翻位, 下轮回基础行), ended/noted纯chat切换时承旧不覆盖;
+        # scene清空防_all_scenes/openMeet误恢复
+        was_meet = prev.get("mode") == "meet"
         try:
             prev_ended = float(prev.get("ended_at") or 0)
         except (TypeError, ValueError):
             prev_ended = 0.0
         st = {"mode": "chat", "scene": "", "since": 0.0, "note": "",
-              "ended_at": ts if prev.get("mode") == "meet" else prev_ended}
+              "ended_at": ts if was_meet else prev_ended,
+              "noted": False if was_meet else bool(prev.get("noted"))}
         await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))
         line = "—— 意识同步结束，回到隔屏聊天 ——"
     seq = 0
@@ -1547,19 +1561,23 @@ def poll(char_id: str = "", since: int = 0, full: int = 0):
 
 
 @app.get("/api/history")
-def history(char_id: str = "", before_seq: int = 0, limit: int = 50):
-    """游标分页: 取seq<brfore_seq的更早消息, 返回seq升序"""
+def history(char_id: str = "", before_seq: int = 0, limit: int = 50, mode: str = ""):
+    """游标分页: 取seq<before_seq的更早消息, 返回seq升序
+    mode='chat': 只回聊天屏可见行(meet行/mode_evt行/意识同步横幅全滤, 口径=_CHAT_WHERE, 与digest一致)
+      —— 1030-TE3: 修"见面长聊把聊天史挤出limit窗口→聊天屏空屏"的根因(此前窗口内全meet行, 客户端滤后为空)
+    mode=''(默认): 原始行, 见面屏手帐用"""
     if char_id not in CHARS:
         return _err(400, f"char_id须为: {','.join(CHARS)}")
     limit = max(1, min(int(limit), 100))
+    where = f"char_id=? AND {_CHAT_WHERE}" if mode == "chat" else "char_id=?"
     with db() as conn:
         if before_seq > 0:
             rows = conn.execute(
-                "SELECT * FROM messages WHERE char_id=? AND seq<? ORDER BY seq DESC LIMIT ?",
+                f"SELECT * FROM messages WHERE {where} AND seq<? ORDER BY seq DESC LIMIT ?",
                 (char_id, before_seq, limit)).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM messages WHERE char_id=? ORDER BY seq DESC LIMIT ?",
+                f"SELECT * FROM messages WHERE {where} ORDER BY seq DESC LIMIT ?",
                 (char_id, limit)).fetchall()
     rows.reverse()
     return {"msgs": [_msg_dict(r) for r in rows]}

@@ -8,7 +8,7 @@
       overlay_text五角色非空且含作息节
 """
 import datetime as _dt
-import os, sys, tempfile
+import asyncio, os, sys, tempfile
 
 CHAT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, CHAT_DIR)
@@ -34,33 +34,33 @@ check("schedule已加载(5角色)", bool(chatapp.SCHEDULE) and len(chatapp.SCHED
       str(getattr(chatapp, "SCHEDULE", None))[:80])
 
 # ---- 2. _state_line 隔屏分支拼作息 ----
-line = chatapp._state_line("lishen", now=ts(2026, 10, 29, 14, 30))   # 周四下午=查房/门诊
+line = asyncio.run(chatapp._state_line("lishen", now=ts(2026, 10, 29, 14, 30)))   # 周四下午=查房/门诊
 check("黎深周四14:30含时刻", "14:30" in line and "周四" in line, line)
 check("黎深周四14:30含时段活动", "查房" in line or "门诊" in line, line)
 check("黎深周四14:30为隔屏态", "隔屏聊天" in line, line)
 
-line = chatapp._state_line("shenxinghui", now=ts(2026, 10, 29, 0, 1))  # 周四00:01=睡觉(跨午夜段)
+line = asyncio.run(chatapp._state_line("shenxinghui", now=ts(2026, 10, 29, 0, 1)))  # 周四00:01=睡觉(跨午夜段)
 check("沈星回00:01判定睡觉", "睡" in line, line)
 
-line = chatapp._state_line("qinche", now=ts(2026, 10, 29, 12, 30))   # 周四午=昼伏夜出
+line = asyncio.run(chatapp._state_line("qinche", now=ts(2026, 10, 29, 12, 30)))   # 周四午=昼伏夜出
 check("秦彻12:30判定睡觉", "睡" in line, line)
 
-line = chatapp._state_line("xiazhou", now=ts(2026, 10, 29, 19, 0))   # 周四晚=回天行的家
+line = asyncio.run(chatapp._state_line("xiazhou", now=ts(2026, 10, 29, 19, 0)))   # 周四晚=回天行的家
 check("夏以昼19:00回天行的家", "天行" in line, line)
 check("夏以昼19:00不提云际列车(防天天长途)", "云际列车" not in line, line)
 
-line = chatapp._state_line("xiazhou", now=ts(2026, 10, 31, 14, 30))  # 周六=周末模式
+line = asyncio.run(chatapp._state_line("xiazhou", now=ts(2026, 10, 31, 14, 30)))  # 周六=周末模式
 check("周六注入周末态", "周末" in line, line)
 check("周六状态行无工作日时刻段", ("-" not in line.split("(")[-1]), line)   # 1029主人: 周末可值班巡航, 断言只卡"不拼工作日时段"
 
-line = chatapp._state_line("lishen", now=ts(2026, 10, 29, 6, 45))    # 晨跑段
+line = asyncio.run(chatapp._state_line("lishen", now=ts(2026, 10, 29, 6, 45)))    # 晨跑段
 check("黎深06:45晨跑(主人补录段)", "晨跑" in line, line)
 
 # ---- 3. 见面分支不受作息污染 ----
 _orig = chatapp._get_meet_state
 chatapp._get_meet_state = lambda c: {"mode": "meet", "scene": "客厅", "since": 0, "note": ""}
 try:
-    line = chatapp._state_line("lishen", now=ts(2026, 10, 29, 14, 30))
+    line = asyncio.run(chatapp._state_line("lishen", now=ts(2026, 10, 29, 14, 30)))
     check("见面态=意识同步中", "意识同步中" in line and "场景:客厅" in line, line)
     check("见面态不拼作息时段", "查房" not in line, line)
 finally:

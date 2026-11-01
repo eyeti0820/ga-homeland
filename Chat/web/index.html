@@ -1041,7 +1041,7 @@ async function pickScene(s){
   $('meetSceneName').textContent=s;
   toast('场景 · '+s);
   /* 1101: 场景带不本地渲染(重绘必蒸发)不落库, 横幅统一由db惰性补; quiet防换场景乱落"开始"横幅 */
-  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:meetChar,mode:'meet',scene:s,quiet:1})})}catch(e){}
+  try{const r=await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:meetChar,mode:'meet',scene:s,quiet:1})});if(!r||!r.ok)throw new Error('场景被后端拒绝')}catch(e){toast('场景未生效: '+((e&&e.message)||'网络'))}   /* 1101: 不再静默吞错, 防横幅"未定"哑炮 */
 }
 function pickCustomScene(){const el=$('mssCustom'),v=(el.value||'').trim();
   if(!v){toast('先写个地方呀');return}

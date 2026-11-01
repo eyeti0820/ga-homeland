@@ -899,7 +899,7 @@ def _pstate():
 # 每轮任务头注入运行时状态行(§3.3), 主动消息按mode分支(§3.4)。先例: _PROACTIVE_KEY。
 _MEET_KEY_PREFIX = "meet_state:"   # meet_state:{char} -> {"mode":"meet","scene":..,"since":..,"note":..}
 _MODE_RE = re.compile(r"^(?:chat|meet)$")        # B4式单测锁定: mode仅两值
-_SCENE_MAX = 12                                   # 场景名≤12字(§3.2)
+_SCENE_MAX = 30                                   # 1101: 12→30, 一级·房间拼接最长15字曾超12被400(前端静默吞→横幅恒"未定"); 对齐前端slice(0,30)
 _SCENE_BAD_RE = re.compile(r"[\x00-\x1f\x7f]")   # 场景名禁控制符/换行
 
 

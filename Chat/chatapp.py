@@ -450,6 +450,76 @@ def _reset_agent_memory(char):
     return False
 
 
+def _purge_memory_traces(char, role, content, msg_ts=0.0):
+    """1101: 删消息联动清GA转录jsonl行+宫殿抽屉(防sweep复活/长期记忆残留)。
+    匹配: sessionId={char}_wx_chatapp + role + 内容(原文或[分块i/n]切片), 时间最近锚±90s同批。
+    sweeper游标=timestamp制, 删行不会引起重复入库。"""
+    import re as _re
+    import datetime as _dt
+    c = (content or "").strip()
+    if role not in ("user", "assistant") or len(c) < 4:
+        return {}
+    sid = f"{char}_wx_{SERVICE_SOURCE}"
+    fpath = os.path.join(GA_ROOT, "temp", f"{char}_wx.jsonl")
+    if not os.path.isfile(fpath):
+        return {}
+    chunk_re = _re.compile(r"^\[分块\d+/\d+\]\s*")
+
+    def _t(s):
+        try:
+            return _dt.datetime.fromisoformat(str(s or "").replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return 0.0
+
+    with open(fpath, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    hits = []  # (行号, uuid, ts)
+    for i, ln in enumerate(lines):
+        try:
+            obj = json.loads(ln)
+        except Exception:
+            continue
+        m = obj.get("message") or {}
+        if obj.get("sessionId") != sid or m.get("role") != role:
+            continue
+        body = chunk_re.sub("", (m.get("content") or "").strip())
+        if body == c or (len(body) >= 20 and body in c):
+            hits.append((i, obj.get("uuid") or "", _t(obj.get("timestamp"))))
+    if not hits:
+        return {}
+    anchor = min(hits, key=lambda h: abs(h[2] - (msg_ts or 0)))[2]
+    batch = [h for h in hits if abs(h[2] - anchor) <= 90]
+    if not batch:
+        return {}
+    drop = {h[0] for h in batch}
+    uuids = {h[1] for h in batch if h[1]}
+    tmp = fpath + ".tmp_purge"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for i, ln in enumerate(lines):
+            if i not in drop:
+                f.write(ln + "\n")
+    os.replace(tmp, fpath)
+    # 宫殿抽屉: flock串行 + 按session过滤message_uuid删
+    removed = 0
+    palace_dir = os.path.expanduser(f"~/mempalaces/{char}")
+    if uuids and os.path.isdir(palace_dir):
+        import fcntl
+        with open(os.path.join(palace_dir, ".ingest.lock"), "a") as lf:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+            try:
+                import chromadb
+                col = chromadb.PersistentClient(path=os.path.join(palace_dir, "palace")).get_collection("mempalace_drawers")
+                got = col.get(where={"session_id": sid}, include=["metadatas"])
+                ids = [i for i, mt in zip(got.get("ids") or [], got.get("metadatas") or [])
+                       if (mt or {}).get("message_uuid") in uuids]
+                if ids:
+                    col.delete(ids=ids)
+                    removed = len(ids)
+            finally:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+    return {"transcript_lines": len(drop), "drawers": removed}
+
+
 def _remove_agent_history_msg(char, role, content):
     """切片7: 删除单条消息时同步抹除agent会话内存中的对应条目"""
     if not content or not isinstance(content, str):
@@ -1464,6 +1534,17 @@ async def msg_del(request: Request):
             _remove_agent_history_msg, char, deleted_row.get("role"), deleted_row.get("content")
         )
 
+    # 1101: 联动清转录jsonl+宫殿抽屉(见面/隔屏共用, 防sweep复活/记忆残留)
+    if deleted_row and deleted_row.get("content"):
+        try:
+            purged = await asyncio.to_thread(
+                _purge_memory_traces, char, deleted_row.get("role") or "",
+                deleted_row.get("content") or "", float(deleted_row.get("ts") or 0))
+            if purged:
+                print(f"[chatapp] {char}: msg_del purge {purged}", flush=True)
+        except Exception as e:
+            print(f"[chatapp] {char}: msg_del purge failed: {e}", flush=True)
+
     return {"ok": True, "seq": seq}
 
 
@@ -1522,17 +1603,21 @@ async def post_msg(request: Request):
     def _lazy_banner():
         with db() as conn:
             r = conn.execute(
-                "SELECT meta FROM messages WHERE char_id=? AND "
+                "SELECT meta, ts FROM messages WHERE char_id=? AND "
                 "CASE WHEN meta IS NULL OR json_valid(meta) THEN json_extract(meta,'$.mode_evt') END IS NOT NULL "
                 "ORDER BY seq DESC LIMIT 1", (char,)).fetchone()
-            last_evt = None
+            last_evt, last_evt_ts = None, 0.0
             if r and r["meta"]:
                 try:
                     last_evt = (json.loads(r["meta"]) or {}).get("mode")
+                    last_evt_ts = float(r["ts"] or 0)
                 except Exception:
                     last_evt = None
-            if cur_mode == "meet" and last_evt != "meet":
-                scene = ((_get_meet_state(char) or {}).get("scene") or "").strip()
+            _ms = _get_meet_state(char) or {}
+            since = float(_ms.get("since") or 0)
+            if cur_mode == "meet" and (last_evt != "meet" or last_evt_ts < since):
+                # 1101: 再入meet而末条横幅属上一段(早于since)也补开始, 防二次见面横幅断档
+                scene = (_ms.get("scene") or "").strip()
                 conn.execute(
                     "INSERT INTO messages(char_id, role, kind, content, meta, ts) "
                     "VALUES (?, 'system', 'system', ?, ?, ?)",

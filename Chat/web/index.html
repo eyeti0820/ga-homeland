@@ -364,11 +364,11 @@ let errPills={};   /* 审计P0-1: seq->红!pill元素, 与poll.err_seqs对齐 */
 let lastTsShown={};let pageTs=0;   /* 热修1028: 翻页前插页内时间眉条游标 */
 const LS_READ='chatapp_read_seq';
 const LS_CACHE_PREFIX='chatapp_msg_cache_';   /* 切片7: 本地离线消息骨架秒开 */
-let ctxMenuTargetSeq=null;
+let ctxMenuTargetSeq=null,ctxMenuSource='chat';
 
 /* ---- 切片7: 右键/长按弹出菜单管理 ---- */
-function showCtxMenu(x,y,seq){
-  ctxMenuTargetSeq=seq;
+function showCtxMenu(x,y,seq,src){
+  ctxMenuTargetSeq=seq;ctxMenuSource=src||'chat';
   const m=$('msgContextMenu'),mk=$('ctxMask');
   m.style.left=Math.min(window.innerWidth-60,Math.max(60,x))+'px';
   m.style.top=Math.max(10,y-45)+'px';
@@ -381,13 +381,18 @@ function closeCtxMenu(){
   $('ctxMask').style.display='none';
 }
 async function confirmDelMsg(){
-  const seq=ctxMenuTargetSeq;
+  const seq=ctxMenuTargetSeq,src=ctxMenuSource;
   closeCtxMenu();
-  if(!seq||!activeChar)return;
+  const cid=src==='meet'?meetChar:activeChar;
+  if(!seq||!cid)return;
   if(!confirm('确定要删除这条消息吗？（会同时从记忆中移除）'))return;
   try{
-    const r=await api('/api/msg_del',{method:'POST',body:JSON.stringify({char_id:activeChar,seq:seq})});
+    const r=await api('/api/msg_del',{method:'POST',body:JSON.stringify({char_id:cid,seq:seq})});
     if(r.ok){
+      if(src==='meet'){   /* 1101: 见面屏分支——删paper内节点+防重渲 */
+        document.querySelectorAll('#meetPaper [data-seq="'+seq+'"]').forEach(e=>e.remove());
+        meetRendered.delete(seq);
+      }else{
       const row=document.querySelector(`#msgArea .row[data-seq="${seq}"]`);
       if(row)row.remove();
       const pill=errPills[seq];
@@ -395,18 +400,19 @@ async function confirmDelMsg(){
       rendered.delete(seq);
       // 同步更新本地骨架缓存
       try{
-        const raw=localStorage.getItem(LS_CACHE_PREFIX+activeChar);
+        const raw=localStorage.getItem(LS_CACHE_PREFIX+cid);
         if(raw){
           const msgs=JSON.parse(raw).filter(m=>m.seq!==seq);
-          localStorage.setItem(LS_CACHE_PREFIX+activeChar,JSON.stringify(msgs));
+          localStorage.setItem(LS_CACHE_PREFIX+cid,JSON.stringify(msgs));
         }
       }catch(e){}
+      }
       toast('已删除');
     }
   }catch(e){toast('删除失败: '+e.message)}
 }
 
-function attachBubbleContextMenu(el,seq){
+function attachBubbleContextMenu(el,seq,src){
   if(!seq)return;
   let timer=null,startX=0,startY=0;
   el.addEventListener('touchstart',e=>{
@@ -414,7 +420,7 @@ function attachBubbleContextMenu(el,seq){
     startX=e.touches[0].clientX;
     startY=e.touches[0].clientY;
     timer=setTimeout(()=>{
-      showCtxMenu(startX,startY,seq);
+      showCtxMenu(startX,startY,seq,src);
     },550);
   },{passive:true});
   el.addEventListener('touchmove',e=>{
@@ -426,7 +432,7 @@ function attachBubbleContextMenu(el,seq){
   el.addEventListener('touchend',()=>{if(timer){clearTimeout(timer);timer=null;}},{passive:true});
   el.addEventListener('contextmenu',e=>{
     e.preventDefault();
-    showCtxMenu(e.clientX,e.clientY,seq);
+    showCtxMenu(e.clientX,e.clientY,seq,src);
   });
 }
 
@@ -910,7 +916,7 @@ function meetNovel(cid,msg,frag){   /* 切片10.1: user=整条胶带; assistant=
   const paper=$('meetPaper');if(!paper)return;
   const host=frag||paper;
   const wrap=document.createElement('div');
-  if(msg.role==='system'){wrap.className='m-band';wrap.textContent=msg.content||'';host.appendChild(wrap);return}
+  if(msg.role==='system'){wrap.className='m-band';wrap.textContent=msg.content||'';wrap.dataset.seq=msg.seq;attachBubbleContextMenu(wrap,msg.seq,'meet');host.appendChild(wrap);return}
   wrap.className='m-msg '+(msg.role==='user'?'u':'a');
   const nm=document.createElement('div');nm.className='m-name';
   if(msg.role==='user'){nm.innerHTML=avatarUser(26);nm.style.cssText='display:inline-flex;align-items:center;margin-bottom:8px'}else{nm.textContent=CMAP[cid]?CMAP[cid].name:cid;}wrap.appendChild(nm);
@@ -930,6 +936,7 @@ function meetNovel(cid,msg,frag){   /* 切片10.1: user=整条胶带; assistant=
       }
     });
   }
+  wrap.dataset.seq=msg.seq;attachBubbleContextMenu(wrap,msg.seq,'meet');   /* 1101: 长按/右键删除(同隔屏) */
   host.appendChild(wrap);   /* 1028-MP: frag模式进前插宿主,实时追加才落paper尾 */
 }
 function meetScroll(){const a=$('meetArea');if(a)a.scrollTop=a.scrollHeight}
@@ -1032,8 +1039,9 @@ async function pickScene(s){
   mssRecentPush(s);
   if(s===meetScene)return;meetScene=s;
   $('meetSceneName').textContent=s;
-  const b=document.createElement('div');b.className='m-band';b.textContent=`场景 · ${s}`;$('meetPaper').appendChild(b);meetScroll();
-  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:meetChar,mode:'meet',scene:s})})}catch(e){}
+  toast('场景 · '+s);
+  /* 1101: 场景带不本地渲染(重绘必蒸发)不落库, 横幅统一由db惰性补; quiet防换场景乱落"开始"横幅 */
+  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:meetChar,mode:'meet',scene:s,quiet:1})})}catch(e){}
 }
 function pickCustomScene(){const el=$('mssCustom'),v=(el.value||'').trim();
   if(!v){toast('先写个地方呀');return}

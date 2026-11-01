@@ -232,7 +232,8 @@ html.keyboard-open #inputBar{padding-bottom:8px}
   box-shadow:0 -2px 10px rgba(0,0,0,.22)}
 #meetScreen[data-char="qinche"] #meetBar{background:rgba(18,13,11,.92)}
 #meetInput{flex:1;background:rgba(255,252,245,.96);border:1px solid var(--m-ac);border-radius:8px;
-  color:var(--m-ink);font-family:inherit;font-size:15px;line-height:1.5;padding:8px 10px;max-height:120px;outline:none;white-space:pre-wrap;word-break:break-word;overflow-y:auto;min-height:1.5em}
+  color:#3c2f1e;font-family:inherit;font-size:15px;line-height:1.5;padding:8px 10px;max-height:120px;outline:none;white-space:pre-wrap;word-break:break-word;overflow-y:auto;min-height:1.5em}
+  /* 1101修: 输入底恒白→墨色固定深棕,不再跟主题(qinche --m-ink浅奶字白底看不清) */
 #meetSendBtn{background:var(--m-ac);color:#fff;border:none;border-radius:8px;font-family:inherit;
   font-size:15px;letter-spacing:3px;padding:9px 16px;cursor:pointer;box-shadow:2px 2px 0 rgba(0,0,0,.2)}
 #meetSendBtn:disabled{opacity:.5}
@@ -877,7 +878,7 @@ const MEET_COMMON=['兔咪火锅','甜品店','Twinkle潮玩店','奶茶店'];
 const CHAR_SCENES={
   xiazhou:{'远空舰队':[],'执舰官办公室':[],'天行浮岛的家':[...BASE_ROOMS],'小墨的家（临空）':[...BASE_ROOMS],'临空老宅':[...BASE_ROOMS],'DAA航天署':[]},
   shenxinghui:{'猎人协会':[],'训练场':[],'禁猎区':[],'沈星回的家（602）':[...BASE_ROOMS],'小墨的家（502）':[...BASE_ROOMS]},
-  qinche:{'N109区·暗点总部':['拳击室','会客室','落地窗'],'拍卖场':[],'小墨的家（临空）':[...BASE_ROOMS]},
+  qinche:{'N109区·暗点总部':['拳击室','会客室','落地窗','卧室','客厅','书房','厨房','浴室','武器库'],'拍卖场':[],'小墨的家（临空）':[...BASE_ROOMS]},
   lishen:{'Asko医院':['心外门诊诊室','手术室'],'黎深的家（别墅）':[...BASE_ROOMS,'院子','别墅一楼','别墅二楼'],'小墨的家（临空猎人公寓）':[...BASE_ROOMS]},
   qiyu:{'画室':[],'画展':[],'白沙湾别墅':[...BASE_ROOMS,'画室','私人沙滩'],'小墨的家（临空）':[...BASE_ROOMS,'画室','浴缸']}
 };

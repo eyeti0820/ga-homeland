@@ -78,11 +78,15 @@ check("chat态", l.startswith("[状态: 隔屏聊天 · 你们不在同一空间
 chatapp._meta_set("meet_state:qiyu", json.dumps(
     {"mode": "meet", "scene": "书房", "since": NOW - 14 * 3600, "note": "她已睡着"}))
 l = sl("qiyu", NOW)
-want = "[状态: 意识同步中(你们在同一空间, 面对面) · 场景:书房 · 始于今天01:00·已持续14小时 · 备注:她已睡着 · 历史旧状态行一律作废,以本行为准]"
-check("meet态全字段", l == want, repr(l))
+# 1102: want改包含式断言(E2写法提醒注入尾部, 全等断言随注入文本联动断——改为免疫)
+check("meet态全字段",
+      l.startswith("[状态: 意识同步中(你们在同一空间, 面对面) · 场景:书房 · 始于今天01:00·已持续14小时 · 备注:她已睡着")
+      and "历史旧状态行一律作废" in l and l.endswith("]"), repr(l))
 chatapp._meta_set("meet_state:qiyu", json.dumps({"mode": "meet"}))
 l = sl("qiyu", NOW)
-check("meet态裸记录", l == "[状态: 意识同步中(你们在同一空间, 面对面) · 历史旧状态行一律作废,以本行为准]", repr(l))
+check("meet态裸记录",   # 1102: 包含式断言(同上, 免疫注入尾部)
+      l.startswith("[状态: 意识同步中(你们在同一空间, 面对面) · ")
+      and "历史旧状态行一律作废" in l and l.endswith("]"), repr(l))
 
 print("== 5. mode_post 校验(全400路径) ==")
 for name, body in [
@@ -90,7 +94,7 @@ for name, body in [
     ("坏char_id", {"char_id": "nobody", "mode": "meet"}),
     ("无mode", {"char_id": "xiazhou"}),
     ("坏mode", {"char_id": "xiazhou", "mode": "video"}),
-    ("scene超12字", {"char_id": "xiazhou", "mode": "meet", "scene": "一二三四五六七八九十一二三"}),
+    ("scene超30字", {"char_id": "xiazhou", "mode": "meet", "scene": "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二"}),
     ("scene带换行", {"char_id": "xiazhou", "mode": "meet", "scene": "书房\n客厅"}),
     ("note超40字", {"char_id": "xiazhou", "mode": "meet", "note": "长" * 41}),
 ]:
@@ -123,7 +127,8 @@ check("退chat返回200", sc3 == 200)
 kv3 = json.loads(chatapp._meta_get("meet_state:shenxinghui") or "null")   # 1030-TE: 退出不再删KV
 check("退出存chat态", bool(kv3) and kv3.get("mode") == "chat", str(kv3))
 check("退出stamp ended_at", kv3.get("ended_at", 0) > 0, str(kv3))
-check("退出清scene", kv3.get("scene") == "", str(kv3))
+check("退出留scene(99a4a84+1102-A: 供seamless重进同段承接)", kv3.get("scene") == "客厅", str(kv3))
+check("退出非quiet=真结束(seamless=0, 审计P2-2)", kv3.get("seamless") == 0, str(kv3))
 post_mode({"char_id": "shenxinghui", "mode": "chat"})   # 纯chat切换不应覆盖旧stamp
 kv3c = json.loads(chatapp._meta_get("meet_state:shenxinghui") or "null")
 check("纯chat切换不覆盖ended_at", kv3c.get("ended_at") == kv3.get("ended_at"), str(kv3c))

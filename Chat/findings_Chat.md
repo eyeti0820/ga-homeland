@@ -86,3 +86,7 @@ D1 全媒体复用 / D2 共享世界书 / D3 手写仿微信 / D4 标点切泡(<
 5. **背景链路**:/api/config GET(bg 值)+bg_set POST(none/color/image);色值 fullmatch #hex{3|4|6|8};图 8MB 预检+读后双限,存 media/bg 时间戳名只留最新;meta 键 _BG_META_KEY 全局共享(五角色同一背景)
 6. **oMLX 退避**:worker 内 attempt 循环,可重试类 5s/15s 共 3 次;4xx(参数/内存 guard)不重试直接 _mark_user_error
 7. **审计工作流终版**:subprocess.Popen(cwd=repo)+stdout 落 log;被审 diff/manifest/文件全部内联进 prompt(外部路径会被沙箱越界拒杀);报告去 ANSI 归档
+
+- [1102切片12] OC审计CLI正确姿势: `opencode run "prompt"`(裸`-e`打help); gstack /review需在prompt开头; 报告落盘后python直读; 历史就是build agent跑的(plan agent在agent/目录不存在)
+- [1102切片12] seamless语义: KV加seamless位, 界面切换(quiet)写1/chat真发消息清0/exit:1显式退出写0; meet分支事件判据(prev=meet或seamless→同段)——时间窗方案(99a4a84 300s)已删, 语义更准(锁屏任意久回=同段)
+- [1102切片12] 测试断言want串对注入文本免疫: _state_line尾部拼E2写法提醒(_meet_format.md共享块), 全等断言会随注入文本联动断——改startswith+contains式

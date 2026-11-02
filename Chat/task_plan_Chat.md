@@ -130,3 +130,10 @@
 - **返工(1028深夜+1)**: 生成A1观感不佳→改官方圆图标(恋深Q版状态头像),白底板行宽剖面定圆(r≈466五枚一致)+抗锯齿圆mask抠512px,裁夏款标牌;零前端改动;旧A1→media/badges/gen_a1/;列表vision 8.5/10;素材iCloud evict须逐文件brctl download
 - **切片12毕(1029)**: 作息注入——`Chat/schedule.py`五角色工作日时刻表+chatapp四补丁(loader/agent overlay/状态行拼时段/主动门缩窗); tests/test_slice12_schedule.py 22绿, slice8改前缀断言后48绿; 备份.bak_1029_s12; 遗留=黎深05:30冲突待拍板/周末出差态/效果观察(详见handoff§二)
 - **切片12.1毕(1029)**: 周末态+动态overlay——主人三指示落地: ①黎深persona删"05:30晨跑，作息极规律"句(备份assets/personas/lishen.md.bak_1029_run,人设层唯一直接改动) ②夏以昼weekend删"回临空陪家人"→"舰队偶有临时值班或巡航任务, 其余随心情安排" ③overlay按当天动态两版: 工作日=时刻表/周末·节假日(HOLIDAYS)=一行自由安排(表根本不进prompt,不赌权重), chatapp新`_refresh_schedule_overlay`每轮换版(agent常驻跨天不stale), 主链路+主动链路两挂点, fail-open; 回归48/25/26全绿; 服务66057已载新码; 效果观察待周末实测
+
+
+## 2026-11-02下午 切片12=A无缝见面(seamless) + 切片13=B PWA缓存 施工中
+- **背景**: ①横幅案(99a4a84)的300s回环窗是时间判据,主人指出语义应为"隔屏没真发消息+没显式退出=永远同一段见面"→改seamless事件判据,删300s; ②PWA有manifest无SW,冷启动HTML/JS/CSS+history全走网络,手机弱网打开空白久→SW静态壳缓存+消息localStorage快照预渲染
+- **A(seamless) 设计**: chat分支quiet切换写KV seamless=1(纯界面切换); /api/msg在chat态真发消息清seamless=0(真回隔屏); 退出按钮显式exit:1=真结束(ended_at落定,下次重进新段新横幅); meet分支: prev.mode=meet→原样承since/scene, prev.mode=chat且seamless=1→同段延续(无时限,空scene承prev.scene), 否则新段(since=当下, scene=请求值或空)。300s窗口整体删除(替代非叠加,保持代码干净)
+- **B(PWA缓存) 设计**: web/sw.js cache-first静态壳(HTML/JS/CSS/字体,版本号CACHE_V内); /api/*绕过缓存直网络; index.html注册SW+消息快照localStorage(最近N条文本)→打开先渲染快照再增量同步; 前端改动须bump CACHE_V
+- **流程(主人1102拍板)**: A→OC审计(gstack)→问题关闭→commit→B→OC审计→commit; 审计报告入库 审计_切片12/13_gstack_1102.md

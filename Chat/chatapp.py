@@ -1378,20 +1378,15 @@ async def mode_post(request: Request):
     ts = time.time()
     if mode == "meet":
         # 再入meet(如只换场景)保留首入since(§3.1), 初入以当下计
-        # 1102治横幅乱插: ①空scene不覆盖(prev场景承接,防"未定") ②quiet短窗回环=同段延续——
-        # 手机PWA被回收→页面重载→前端"纠偏chat+openMeet重进"曾把同一次见面切成多段:
-        # chat清scene/since→重进since重置→下条消息必插"开始·未定"横幅(每回页面必插)。
-        # 现: prev=chat且quiet且距ended_at≤300s 视为同段, since/场景承接旧段, 横幅不再重生
+        # 1102-A seamless(替代99a4a84的300s时间窗, 语义: 隔屏没真发消息+没显式退出=永远同一段):
+        #   prev=meet → 原样承since/scene(纯锁屏/切走回来, 隔多久都同段)
+        #   prev=chat且seamless=1 → 纯界面切换(纠偏/浏览)未真回隔屏, 同段延续
+        #   其余(chat态真发过消息[seamless已被post_msg清0]/显式exit退出) → 新段, since=当下
         try: prev_since = float(prev.get("since") or 0)
         except (TypeError, ValueError): prev_since = 0.0
-        try: prev_ended = float(prev.get("ended_at") or 0)
-        except (TypeError, ValueError): prev_ended = 0.0
-        if prev.get("mode") == "meet":
+        if prev.get("mode") == "meet" or prev.get("seamless"):
             since = prev_since
             scene = scene or prev.get("scene") or ""
-        elif quiet and prev_since and ts - prev_ended < 300:
-            since = prev_since
-            scene = scene or prev.get("scene") or ""   # 回环延续(页面重载假切段)
         else:
             since = ts
             scene = scene or ""
@@ -1401,14 +1396,17 @@ async def mode_post(request: Request):
     else:
         # 1030-TE: 退出不再删KV, 改存chat态记录+ended_at; TE2: 加noted位(状态行注过
         # 一次"同步已结束"即翻位, 下轮回基础行), ended/noted纯chat切换时承旧不覆盖;
-        # 1102: scene/since改保留旧值——供上面meet回环延续判定(300s内quiet重进=同段);
-        # 副作用=退出后openMeet会带出上次场景, 属可接受(有选择器可改, 优于"未定")
+        # 1102-A seamless: scene/since保留旧值供同段延续; 新增seamless位——
+        #   exit=1(前端closeMeet显式退出) → seamless=0, 下回进面=新段(主人主动结束)
+        #   其余quiet切换(纠偏/切角色/纯浏览) → seamless=1, 重进同段延续(无时限)
         was_meet = prev.get("mode") == "meet"
+        exit_meet = bool(body.get("exit"))
         try:
             prev_ended = float(prev.get("ended_at") or 0)
         except (TypeError, ValueError):
             prev_ended = 0.0
         st = {"mode": "chat", "scene": prev.get("scene") or "", "since": float(prev.get("since") or 0), "note": "",
+              "seamless": 0 if (exit_meet or not quiet) else 1,   # 审计P2-2: 非quiet真切换(落横幅)=真结束
               "ended_at": ts if was_meet else prev_ended,
               "noted": False if was_meet else bool(prev.get("noted"))}
         await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))
@@ -1631,7 +1629,13 @@ async def post_msg(request: Request):
         if len(rows) != len(set(image_seqs)):
             return _err(400, "image_seqs含无效或非本角色的图片")
     # 1028-LB: 惰性横幅——meet态首条消息补"开始", meet段后的首条chat消息补"结束"; 纯浏览进出零落库
-    cur_mode = _mode_of(char)
+    st_ = _get_meet_state(char)   # 审计P1-1: 单读(原_mode_of+二次_get_meet_state双读KV)
+    cur_mode = st_.get("mode")
+    if cur_mode == "chat":
+        # 1102-A seamless: chat态真发消息=真回隔屏, 清界面切换标记(下回进面=新段)
+        if st_.get("seamless"):
+            st_["seamless"] = 0
+            await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st_, ensure_ascii=False))
     def _lazy_banner():
         with db() as conn:
             r = conn.execute(

@@ -123,7 +123,7 @@ dig_m = dig_of(C)
 check("meet态scene=星轨天文台", dig_m and dig_m.get("scene") == "星轨天文台", str(dig_m and dig_m.get("scene")))
 post_mode({"char_id": C, "mode": "chat"})
 dig3 = dig_of(C)
-check("chat态scene=空串", dig3 and dig3.get("scene") == "", str(dig3 and dig3.get("scene")))
+check("chat态留旧scene(99a4a84+1102-A: seamless承接)", dig3 and dig3.get("scene") == "星轨天文台", str(dig3 and dig3.get("scene")))
 
 print("== D7-5. P2-6b: system行落库带mode标 ==")
 chatapp._insert_msg(C, "system", "system", "(一条语音转码失败, 内容丢失)",

@@ -949,7 +949,7 @@ async function openMeet(cid){
   const ms=$('meetScreen');ms.style.display='flex';ms.dataset.char=cid;
   $('meetTitle').textContent=CMAP[cid].name;$('meetSceneName').textContent=meetScene||'选场景';
   $('meetBar').style.display='flex';$('meetPaper').innerHTML='';
-  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene,quiet:1})})}catch(e){}   /* 1028-LB: 纯浏览进出不落横幅,首条见面消息时惰性补"开始" */
+  try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene,quiet:1})})}catch(e){toast('见面状态同步失败,请退出重进')}   /* 1028-LB: 纯浏览进出不落横幅; 审计P3-4: 失败不再静默 */
   try{
     const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=20`);   /* 1028-MP: 对齐聊天屏=默认拉最近20条原始行(见面文字多),不再只渲染最近一轮同步 */
     const raw=r.msgs||[];
@@ -993,7 +993,7 @@ $('meetArea').addEventListener('scroll',async()=>{
 async function closeMeet(){
   const cid=meetChar;meetChar=null;
   $('meetScreen').style.display='none';$('listScreen').style.display='flex';
-  if(cid){try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat',quiet:1})})}catch(e){}}   /* 1028-LB: 退出不落横幅,回聊天屏发首条消息时惰性补"结束" */
+  if(cid){try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'chat',quiet:1,exit:1})})}catch(e){}}   /* 1102-A: 显式退出=真结束(seamless清0,下回进面新段); 纠偏/浏览切换不带exit=同段可续; 1028-LB: 退出不落横幅,回聊天屏发首条消息时惰性补"结束" */
   refreshDigest();
 }
 /* ---------- 切片10: 场景两级级联弹层(最近×3 + 通用约会点 + 角色地盘→房间chips + 自定义) ---------- */

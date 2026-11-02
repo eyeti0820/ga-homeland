@@ -183,6 +183,8 @@ html.keyboard-open #inputBar{padding-bottom:8px}
 #meetFontBtn:hover{opacity:1}
 #meetArea{position:relative;z-index:1;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #meetPaper{max-width:680px;margin:0 auto;padding:20px 16px 30px}
+/* 1102: 手机端见面大卡页边距——羊皮纸底板left:-5px/right:-4px外扩,原16px padding时底板距屏仅约11px偏挤;≤560px屏padding加到26px(底板距屏≈21px),桌面680容器不变 */
+@media (max-width:560px){#meetPaper{padding-left:26px;padding-right:26px}}
 .m-band{display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--m-bandc);font-size:12px;
   letter-spacing:2px;text-shadow:0 1px 3px rgba(0,0,0,.25)}
 .m-band::before,.m-band::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--m-bandc));opacity:.55}

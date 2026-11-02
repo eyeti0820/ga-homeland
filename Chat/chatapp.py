@@ -1378,20 +1378,37 @@ async def mode_post(request: Request):
     ts = time.time()
     if mode == "meet":
         # 再入meet(如只换场景)保留首入since(§3.1), 初入以当下计
-        since = prev.get("since") if prev.get("mode") == "meet" else ts
+        # 1102治横幅乱插: ①空scene不覆盖(prev场景承接,防"未定") ②quiet短窗回环=同段延续——
+        # 手机PWA被回收→页面重载→前端"纠偏chat+openMeet重进"曾把同一次见面切成多段:
+        # chat清scene/since→重进since重置→下条消息必插"开始·未定"横幅(每回页面必插)。
+        # 现: prev=chat且quiet且距ended_at≤300s 视为同段, since/场景承接旧段, 横幅不再重生
+        try: prev_since = float(prev.get("since") or 0)
+        except (TypeError, ValueError): prev_since = 0.0
+        try: prev_ended = float(prev.get("ended_at") or 0)
+        except (TypeError, ValueError): prev_ended = 0.0
+        if prev.get("mode") == "meet":
+            since = prev_since
+            scene = scene or prev.get("scene") or ""
+        elif quiet and prev_since and ts - prev_ended < 300:
+            since = prev_since
+            scene = scene or prev.get("scene") or ""   # 回环延续(页面重载假切段)
+        else:
+            since = ts
+            scene = scene or ""
         st = {"mode": "meet", "scene": scene, "since": since or ts, "note": note}
         await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))   # 审计P2-2: 阻塞写挪出事件循环
         line = f"—— 意识同步开始 · 场景:{scene or '未定'} ——"
     else:
         # 1030-TE: 退出不再删KV, 改存chat态记录+ended_at; TE2: 加noted位(状态行注过
         # 一次"同步已结束"即翻位, 下轮回基础行), ended/noted纯chat切换时承旧不覆盖;
-        # scene清空防_all_scenes/openMeet误恢复
+        # 1102: scene/since改保留旧值——供上面meet回环延续判定(300s内quiet重进=同段);
+        # 副作用=退出后openMeet会带出上次场景, 属可接受(有选择器可改, 优于"未定")
         was_meet = prev.get("mode") == "meet"
         try:
             prev_ended = float(prev.get("ended_at") or 0)
         except (TypeError, ValueError):
             prev_ended = 0.0
-        st = {"mode": "chat", "scene": "", "since": 0.0, "note": "",
+        st = {"mode": "chat", "scene": prev.get("scene") or "", "since": float(prev.get("since") or 0), "note": "",
               "ended_at": ts if was_meet else prev_ended,
               "noted": False if was_meet else bool(prev.get("noted"))}
         await asyncio.to_thread(_meta_set, _meet_key(char), json.dumps(st, ensure_ascii=False))

@@ -1002,6 +1002,18 @@ def _refresh_schedule_overlay(agent, char):
         print(f"[chatapp] {char}: refresh schedule overlay failed(fail-open): {e}", flush=True)
 
 
+def _meet_style_reminder():
+    """1102-E2: meet态每轮随状态行注入写法提醒; assets/personas/_meet_reminder.md 现读
+    (改文即时生效零重启; 缺失/异常fail-open空串)。1101复盘: 黑名单词与例句=复读素材,
+    提醒须保持短语式正向规则、无完整句子。"""
+    try:
+        p = os.path.join(GA_ROOT, "assets", "personas", "_meet_reminder.md")
+        t = open(p, encoding="utf-8").read().strip().replace("\n", " · ")
+        return t
+    except Exception:
+        return ""
+
+
 async def _state_line(char, now=None):
     """每轮现读meta拼状态行(§3.3): trim裁不掉当前态(每轮重注), history旧行自然淘汰
     1030-TE2: 退出meet后"同步已结束"改一次性事件行——注入即翻位noted, 下轮回基础行;
@@ -1023,6 +1035,9 @@ async def _state_line(char, now=None):
         if note:
             parts.append(f"备注:{note}")
         parts.append("历史旧状态行一律作废,以本行为准")   # 审计P2-9: trim淘汰旧态行后兜底
+        _rem = _meet_style_reminder()   # 1102-E2: 近端正向描写提醒(短语式无例句防复读; 文件现读)
+        if _rem:
+            parts.append(_rem)
         return "[状态: " + " · ".join(parts) + "]"
     # chat态: 结束事件未注过→本轮注事件行并翻位noted(翻位失败不拦注入, 下轮重试)
     try:

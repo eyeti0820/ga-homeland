@@ -2102,6 +2102,13 @@ def manifest_ep():
                         headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/sw.js")   # 1102-B: SW壳缓存脚本; no-cache保更新及时推送(浏览器对sw.js默认24h硬缓存)
+def sw_ep():
+    return FileResponse(os.path.join(WEB_DIR, "sw.js"),
+                        media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
 @app.get("/apple-touch-icon.png")
 def apple_icon_ep():
     return FileResponse(os.path.join(WEB_DIR, "icons", "192.png"),

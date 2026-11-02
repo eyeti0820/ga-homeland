@@ -394,6 +394,8 @@ async function confirmDelMsg(){
       if(src==='meet'){   /* 1101: 见面屏分支——删paper内节点+防重渲 */
         document.querySelectorAll('#meetPaper [data-seq="'+seq+'"]').forEach(e=>e.remove());
         meetRendered.delete(seq);
+        try{const k='chatapp_meet_snap_'+cid,msnap=localStorage.getItem(k);   /* 审计P1-1: 同步过滤快照, 防已删消息下次进面复活 */
+          if(msnap)localStorage.setItem(k,JSON.stringify(JSON.parse(msnap).filter(m=>m.seq!==seq)))}catch(e){}
       }else{
       const row=document.querySelector(`#msgArea .row[data-seq="${seq}"]`);
       if(row)row.remove();
@@ -720,6 +722,7 @@ async function openChat(cid){
       /* 清库1027-B: 服务端已无该角色消息(如清库后) → 清空DOM与本地骨架缓存, 防旧消息幽灵常驻屏幕 */
       $('msgArea').innerHTML='';rendered=new Set();errPills={};lastTsShown[cid]=0;firstSeqInDom[cid]=0;
       try{localStorage.removeItem(LS_CACHE_PREFIX+cid)}catch(e){}
+      try{localStorage.removeItem('chatapp_meet_snap_'+cid)}catch(e){}   /* 1102-B: 见面屏快照同清防幽灵 */
     }
     $('typingHint').style.display='none';
   }catch(e){toast('加载失败');   /* 审计P2-1: 历史失败改拉全量, 防since=0把最旧200条当新消息渲染 */
@@ -950,11 +953,21 @@ async function openMeet(cid){
   $('meetTitle').textContent=CMAP[cid].name;$('meetSceneName').textContent=meetScene||'选场景';
   $('meetBar').style.display='flex';$('meetPaper').innerHTML='';
   try{await api('/api/mode',{method:'POST',body:JSON.stringify({char_id:cid,mode:'meet',scene:meetScene,quiet:1})})}catch(e){toast('见面状态同步失败,请退出重进')}   /* 1028-LB: 纯浏览进出不落横幅; 审计P3-4: 失败不再静默 */
+  if(meetChar!==cid)return;   /* 审计P2-1: await期间用户切角色→迟到的mode响应不再继续(防跨角色串屏) */
+  /* 1102-B: 见面屏骨架秒开(对齐切片7聊天屏) — 先渲染上次快照, API 回来按 seq 去重增量(meetRendered) */
+  try{const snap=JSON.parse(localStorage.getItem('chatapp_meet_snap_'+cid)||'[]');
+    if(Array.isArray(snap)&&snap.length)snap.forEach(m=>meetNovel(cid,m))}catch(e){}
   try{
     const r=await api(`/api/history?char_id=${encodeURIComponent(cid)}&limit=20`);   /* 1028-MP: 对齐聊天屏=默认拉最近20条原始行(见面文字多),不再只渲染最近一轮同步 */
+    if(meetChar!==cid)return;   /* 审计P2-1: 迟到的history响应防渲染进别人的paper */
     const raw=r.msgs||[];
     const msgs=raw.filter(meetFilter);
     msgs.forEach(m=>meetNovel(cid,m));
+    if(msgs.length){try{localStorage.setItem('chatapp_meet_snap_'+cid,JSON.stringify(msgs.slice(-30)))}catch(e){}}   /* 1102-B: 快照30条; 审计P3-1: msgs空不覆写 */
+    else if(localStorage.getItem('chatapp_meet_snap_'+cid)){   /* 清残影(审计P3-1): 无meet行(库空或被chat行挤出窗口)→清屏+清快照, 防插画与快照残影同屏 */
+      $('meetPaper').innerHTML='';meetRendered=new Set();
+      try{localStorage.removeItem('chatapp_meet_snap_'+cid)}catch(e){}
+    }
     const last=raw[raw.length-1];
     meetSince[cid]=last?last.seq:0;                 /* 增量游标取原始末行:滤掉的chat行不重复拉 */
     meetFirstSeq[cid]=raw.length?raw[0].seq:1;      /* 翻页游标取原始首行:整页滤空仍可续翻 */
@@ -1219,6 +1232,9 @@ refreshDigest();applyBg();fetchBgCfg();
   document.addEventListener('visibilitychange',schedule);
   sync();
 })();
+
+/* 1102-B: SW壳缓存注册(秒开+后台更新); HTTPS(ts.net)/localhost 可注册, 其余环境静默跳过 */
+if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}
 
 </script>
 </body>
